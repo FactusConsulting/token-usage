@@ -5,7 +5,7 @@ name: release
 #
 # Jobs:
 #   build-tarball     — pack source, sha256, attach to GitHub Release
-#   publish-chocolatey — substitute placeholders, choco pack + push to private feed
+#   publish-chocolatey — substitute placeholders, choco pack + push to public Sleet feed
 #   publish-homebrew  — substitute placeholders, PR formula into homebrew-tap
 #
 # Nix: no release-time job. Flake users run `nix flake update` against this

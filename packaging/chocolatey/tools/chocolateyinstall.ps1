@@ -5,15 +5,8 @@ The release workflow substitutes:
   __VERSION__   — semver of the tag, e.g. 1.4.0
   __CHECKSUM__  — sha256 of the GitHub release source tarball
 
-Private-repo download: this package targets a PRIVATE GitHub release.
-Install-ChocolateyZipPackage will follow the URL using whatever HTTP headers
-are available to it; for a private repo the end user must export
-$env:GITHUB_TOKEN (a PAT with `repo` read) before running `choco install`.
-The package treats the token as REQUIRED — there is no anonymous fallback.
-
-Alternative: host this .nupkg on a private Chocolatey feed and pre-stage the
-release tarball where the feed can reach it; then GITHUB_TOKEN is not needed
-on each client.
+Public download: this package targets a PUBLIC GitHub release. The zip is
+fetched anonymously from the release assets — no token or auth header needed.
 #>
 $ErrorActionPreference = 'Stop'
 
@@ -25,19 +18,14 @@ $tarUrl      = "https://github.com/FactusConsulting/token-usage/releases/downloa
 $toolsDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $extractDir  = Join-Path $toolsDir 'src'
 
-if (-not $env:GITHUB_TOKEN) {
-    throw "token-usage is a PRIVATE package. Set `$env:GITHUB_TOKEN to a PAT with 'repo' read before running 'choco install'."
-}
-
 # Install-ChocolateyZipPackage downloads + verifies + extracts the zip.
-# We pass the token via -Options so the request to the private release works.
+# The release is public, so the asset downloads anonymously — no auth header.
 $args = @{
     PackageName    = $packageName
     UnzipLocation  = $extractDir
     Url            = $tarUrl
     Checksum       = $checksum
     ChecksumType   = 'sha256'
-    Options        = @{ Headers = @{ Authorization = "token $env:GITHUB_TOKEN"; Accept = 'application/octet-stream' } }
 }
 Install-ChocolateyZipPackage @args
 

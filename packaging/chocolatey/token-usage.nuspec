@@ -13,15 +13,15 @@
     <projectSourceUrl>https://github.com/FactusConsulting/token-usage</projectSourceUrl>
     <docsUrl>https://github.com/FactusConsulting/token-usage/blob/main/README.md</docsUrl>
     <bugTrackerUrl>https://github.com/FactusConsulting/token-usage/issues</bugTrackerUrl>
-    <tags>ccusage langfuse llm token-usage observability private</tags>
+    <tags>ccusage langfuse llm token-usage observability</tags>
     <summary>Ship ccusage daily aggregates to a self-hosted Langfuse instance</summary>
     <description>
 Cross-machine LLM token-usage tracking. Installs the token-usage shim plus a
 Scheduled Task that runs ccusage hourly and ships daily aggregates to a
 self-hosted Langfuse instance.
 
-This is a private package — install via a private Chocolatey feed:
-`choco install token-usage -s "&lt;private-feed-url&gt;"`.
+Install from the public Chocolatey feed hosted on this repo's GitHub Pages
+(see the README for the `choco source add` command).
 
 After install, edit `%LOCALAPPDATA%\token-usage\.env` and fill in the
 `LANGFUSE_*` keys.

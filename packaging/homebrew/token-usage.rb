@@ -6,14 +6,14 @@
 #
 # Works on both macOS and Linux (brew on Linux).
 #
-# Private-repo note: brew needs `HOMEBREW_GITHUB_API_TOKEN` exported with
-# `repo` read scope so it can fetch the private release tarball.
+# Public release: the tarball is fetched anonymously from the GitHub release
+# assets — no token needed.
 class TokenUsage < Formula
   desc "Ship ccusage daily aggregates to a self-hosted Langfuse instance"
   homepage "https://github.com/FactusConsulting/token-usage"
   url "https://github.com/FactusConsulting/token-usage/releases/download/v__VERSION__/token-usage-__VERSION__.tar.gz"
   sha256 "__SHA256__"
-  license :cannot_represent  # private; not OSI-licensed
+  license "MIT"
   version "__VERSION__"
 
   depends_on "node"

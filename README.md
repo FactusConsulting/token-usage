@@ -105,8 +105,9 @@ Published to a public Chocolatey feed hosted on this repo's GitHub Pages:
 # One-time: add the feed.
 choco source add --name=token-usage `
   --source="https://factusconsulting.github.io/token-usage/chocolatey/index.json"
-# Install.
-choco install token-usage -s token-usage -y
+# Install (omit -s so Chocolatey can resolve nodejs/python deps from the
+# community feed; our feed only hosts token-usage itself).
+choco install token-usage -y
 ```
 
 ### Homebrew (macOS + Linux)
@@ -146,4 +147,4 @@ three channels above.
 
 ## License
 
-Private.
+MIT — see [LICENSE](LICENSE).
