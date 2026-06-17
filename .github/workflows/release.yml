@@ -5,7 +5,7 @@ name: release
 #
 # Jobs:
 #   build-tarball     — pack source, sha256, attach to GitHub Release
-#   publish-chocolatey — substitute placeholders, choco pack + push to private feed
+#   publish-chocolatey — substitute placeholders, choco pack + push to public Sleet feed
 #   publish-homebrew  — substitute placeholders, PR formula into homebrew-tap
 #
 # Nix: no release-time job. Flake users run `nix flake update` against this
@@ -116,22 +116,27 @@ jobs:
   publish-chocolatey:
     needs: build-tarball
     runs-on: windows-2025
+    # Pushes the .nupkg into a Sleet-managed NuGet feed on this repo's
+    # gh-pages branch. GitHub Pages serves it at:
+    #   https://factusconsulting.github.io/token-usage/chocolatey/index.json
+    # — public, no auth, matches the whisper-dictate pattern.
     permissions:
-      contents: read
+      contents: write  # publish-chocolatey-feed.ps1 commits to gh-pages
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
+          # Sleet's git operations need full history on the gh-pages branch
+          # (it does a separate `git clone --branch gh-pages` itself).
+          fetch-depth: 1
 
       - uses: actions/download-artifact@v4
         with:
           name: shas
 
-      - name: Substitute placeholders + pack + push
+      - name: Substitute placeholders + pack
+        id: pack
         shell: pwsh
-        env:
-          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
-          CHOCO_PUSH_SOURCE: ${{ secrets.CHOCO_PUSH_SOURCE }}
         run: |
           $ErrorActionPreference = 'Stop'
           $version = '${{ needs.build-tarball.outputs.version }}'
@@ -153,13 +158,14 @@ jobs:
           choco pack $nuspec --out $pkgRoot
           $nupkg = Get-ChildItem -Path $pkgRoot -Filter "token-usage.$version.nupkg" | Select-Object -First 1
           if (-not $nupkg) { throw "choco pack produced no .nupkg" }
+          "package=$($nupkg.FullName)" >> $env:GITHUB_OUTPUT
 
-          if (-not $env:CHOCO_API_KEY) {
-            Write-Host "::warning::CHOCO_API_KEY not set — packed $($nupkg.FullName) but skipping push."
-            exit 0
-          }
-          $source = if ($env:CHOCO_PUSH_SOURCE) { $env:CHOCO_PUSH_SOURCE } else { 'https://push.chocolatey.org/' }
-          choco push $nupkg.FullName --source $source --api-key $env:CHOCO_API_KEY
+      - name: Publish to public Chocolatey feed (Sleet → gh-pages)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/publish-chocolatey-feed.ps1 -PackagePath "${{ steps.pack.outputs.package }}"
 
   publish-homebrew:
     needs: build-tarball

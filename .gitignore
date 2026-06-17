@@ -17,3 +17,6 @@ venv/
 .vscode/
 .idea/
 *.swp
+
+# Local-only Claude Code settings (permissive allowlist; never commit/publish)
+.claude/settings.local.json

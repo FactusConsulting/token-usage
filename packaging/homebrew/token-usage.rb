@@ -6,14 +6,14 @@
 #
 # Works on both macOS and Linux (brew on Linux).
 #
-# Private-repo note: brew needs `HOMEBREW_GITHUB_API_TOKEN` exported with
-# `repo` read scope so it can fetch the private release tarball.
+# Public release: the tarball is fetched anonymously from the GitHub release
+# assets — no token needed.
 class TokenUsage < Formula
   desc "Ship ccusage daily aggregates to a self-hosted Langfuse instance"
   homepage "https://github.com/FactusConsulting/token-usage"
   url "https://github.com/FactusConsulting/token-usage/releases/download/v__VERSION__/token-usage-__VERSION__.tar.gz"
   sha256 "__SHA256__"
-  license :cannot_represent  # private; not OSI-licensed
+  license "MIT"
   version "__VERSION__"
 
   depends_on "node"
@@ -33,18 +33,29 @@ class TokenUsage < Formula
            "--prefix=#{libexec}/node_modules",
            "ccusage@#{ccusage_version}"
 
+    # Python venv with the shim's runtime deps. The earlier draft invoked
+    # bare python3.12 against the shim, but the shim imports `requests`
+    # unconditionally — Codex caught that as `ModuleNotFoundError` on a
+    # clean install. Putting requirements.txt into a venv under libexec
+    # keeps the formula self-contained without polluting the user's
+    # site-packages.
     py = Formula["python@3.12"].opt_bin/"python3.12"
-    ccusage_bin = libexec/"node_modules/bin/ccusage"
+    venv = libexec/"venv"
+    system py, "-m", "venv", venv
+    system venv/"bin/pip", "install", "--quiet", "--upgrade", "pip"
+    system venv/"bin/pip", "install", "--quiet",
+           "-r", libexec/"shim/requirements.txt"
 
     # token-usage wrapper: prepend our pinned ccusage to PATH, then run the
-    # shim. Honors TOKEN_USAGE_DRY_RUN / TOKEN_USAGE_HOSTNAME / LANGFUSE_*
-    # from the user's env (no .env required on this install path — brew users
-    # typically wire up env via launchd/systemd).
+    # shim via the venv python. Honors TOKEN_USAGE_DRY_RUN /
+    # TOKEN_USAGE_HOSTNAME / LANGFUSE_* from the user's env (no .env
+    # required on this install path — brew users typically wire up env via
+    # launchd/systemd).
     (bin/"token-usage").write <<~SH
       #!/bin/bash
       set -euo pipefail
       export PATH="#{libexec}/node_modules/bin:$PATH"
-      exec "#{py}" "#{libexec}/shim/ccusage-ship.py" "$@"
+      exec "#{venv}/bin/python" "#{libexec}/shim/ccusage-ship.py" "$@"
     SH
     chmod 0755, bin/"token-usage"
   end
