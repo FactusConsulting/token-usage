@@ -31,8 +31,10 @@ Exit codes:
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -84,12 +86,27 @@ def _require_env() -> tuple[str, str, str, list[str]]:
     return host, pk, sk, sources
 
 
+@functools.lru_cache(maxsize=1)
+def _ccusage_exe() -> str:
+    """Resolve the ccusage executable. On Windows `npm -g` installs
+    `ccusage.cmd`, which subprocess can't launch by the bare name `ccusage`
+    (CreateProcess does no PATHEXT search), so resolve the full path via
+    shutil.which. Raises a clear error if ccusage isn't on PATH at all."""
+    exe = shutil.which("ccusage")
+    if not exe:
+        raise FileNotFoundError(
+            "ccusage not found on PATH. Install it with "
+            "`npm install -g ccusage` (the installers do this for you)."
+        )
+    return exe
+
+
 def _ccusage_daily(source: str, since: str) -> list[dict[str, Any]]:
     """Run `ccusage <source> daily --json --since <since>` and return the
     `daily` array. Raises CalledProcessError on a non-zero exit so the caller
     can decide whether to fail the whole run or just skip this source."""
     out = subprocess.check_output(
-        ["ccusage", source, "daily", "--json", "--since", since],
+        [_ccusage_exe(), source, "daily", "--json", "--since", since],
         text=True,
     )
     payload = json.loads(out)
