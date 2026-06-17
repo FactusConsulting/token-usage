@@ -1,0 +1,19 @@
+# Local secrets — the installer writes this; the example template is committed.
+.env
+shim/.env
+
+# Local logs from the shim's unattended runs.
+*.log
+shim/ship.log
+
+# Python venv / build artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Editor scratch
+.vscode/
+.idea/
+*.swp

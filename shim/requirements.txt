@@ -1,0 +1,3 @@
+requests>=2.31
+# python-dotenv is optional — the shim degrades gracefully if absent.
+python-dotenv>=1.0
