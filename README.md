@@ -145,6 +145,13 @@ ccusage version. Renovate opens a PR whenever a new ccusage release is
 published; merging it triggers the next release tag, which fans out to all
 three channels above.
 
+## How cost & tokens work
+
+For how the shim maps ccusage data into Langfuse, why Langfuse (not ccusage)
+computes cost, how prompt-cache tokens are priced (input-side, per-type),
+per-source model naming, multi-machine hostnames and idempotent backfills, see
+[docs/cost-and-tokens.md](docs/cost-and-tokens.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
