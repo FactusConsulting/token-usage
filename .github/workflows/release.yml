@@ -1,0 +1,220 @@
+name: release
+
+# Cut a release by pushing a version tag:
+#   git tag v1.4.0 && git push origin v1.4.0
+#
+# Jobs:
+#   build-tarball     — pack source, sha256, attach to GitHub Release
+#   publish-chocolatey — substitute placeholders, choco pack + push to private feed
+#   publish-homebrew  — substitute placeholders, PR formula into homebrew-tap
+#
+# Nix: no release-time job. Flake users run `nix flake update` against this
+# repo whenever they want a newer pin (or use a flake input override). The
+# flake reads CCUSAGE_VERSION at evaluation time, so a new tag is automatically
+# picked up by anyone who updates their inputs.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)release, e.g. v1.4.0'
+        required: true
+
+jobs:
+  build-tarball:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+      asset_zip: ${{ steps.pack.outputs.asset_zip }}
+      asset_tar: ${{ steps.pack.outputs.asset_tar }}
+    steps:
+      - name: Resolve tag
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - name: Sanity-check CCUSAGE_VERSION matches tag (soft warn)
+        run: |
+          set -e
+          if [ ! -f CCUSAGE_VERSION ]; then
+            echo "::warning::CCUSAGE_VERSION file missing"
+            exit 0
+          fi
+          pinned="$(tr -d '\n' < CCUSAGE_VERSION)"
+          echo "CCUSAGE_VERSION pinned to: $pinned"
+          echo "Release tag VERSION:       $VERSION"
+          # We do NOT require these to match — the tag is the package version,
+          # CCUSAGE_VERSION is the upstream npm pin. Renovate bumps the latter
+          # independently.
+
+      - name: Pack source tarball + zip
+        id: pack
+        run: |
+          set -euo pipefail
+          name="token-usage-${VERSION}"
+          # Create a clean source export at $name/ so the tar/zip top-level dir
+          # has a predictable name (homebrew + choco install scripts both
+          # assume <name>-<version>/ as the unpacked tree).
+          git archive --format=tar --prefix="${name}/" HEAD | tar -xf -
+          tar -czf "${name}.tar.gz" "${name}"
+          (cd "${name}" && zip -qr "../${name}.zip" .)
+          sha_tar=$(sha256sum "${name}.tar.gz" | cut -d' ' -f1)
+          sha_zip=$(sha256sum "${name}.zip" | cut -d' ' -f1)
+          echo "tar.gz sha256: $sha_tar"
+          echo "zip    sha256: $sha_zip"
+          # Homebrew consumes .tar.gz; Chocolatey consumes .zip. We expose the
+          # tar.gz sha (used by the homebrew job) as the primary `sha256` output,
+          # and emit the zip sha to a file the chocolatey job reads.
+          echo "sha256=$sha_tar" >> "$GITHUB_OUTPUT"
+          echo "asset_zip=${name}.zip" >> "$GITHUB_OUTPUT"
+          echo "asset_tar=${name}.tar.gz" >> "$GITHUB_OUTPUT"
+          printf '%s' "$sha_zip" > zip.sha256
+          printf '%s' "$sha_tar" > tar.sha256
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          notes="Release $TAG. See CCUSAGE_VERSION for the pinned upstream ccusage version."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${{ steps.pack.outputs.asset_tar }}" \
+              "${{ steps.pack.outputs.asset_zip }}" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "${{ steps.pack.outputs.asset_tar }}" \
+              "${{ steps.pack.outputs.asset_zip }}" \
+              --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "$notes"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shas
+          path: |
+            zip.sha256
+            tar.sha256
+
+  publish-chocolatey:
+    needs: build-tarball
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: shas
+
+      - name: Substitute placeholders + pack + push
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+          CHOCO_PUSH_SOURCE: ${{ secrets.CHOCO_PUSH_SOURCE }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ needs.build-tarball.outputs.version }}'
+          $shaZip  = (Get-Content -Raw zip.sha256).Trim()
+          Write-Host "Substituting __VERSION__=$version __CHECKSUM__=$shaZip"
+
+          $pkgRoot = 'packaging/chocolatey'
+          $nuspec  = Join-Path $pkgRoot 'token-usage.nuspec'
+          $install = Join-Path $pkgRoot 'tools/chocolateyinstall.ps1'
+          $verify  = Join-Path $pkgRoot 'tools/VERIFICATION.txt'
+
+          foreach ($f in @($nuspec, $install, $verify)) {
+            (Get-Content -Raw $f) `
+              -replace '__VERSION__', $version `
+              -replace '__CHECKSUM__', $shaZip `
+              | Set-Content -NoNewline $f
+          }
+
+          choco pack $nuspec --out $pkgRoot
+          $nupkg = Get-ChildItem -Path $pkgRoot -Filter "token-usage.$version.nupkg" | Select-Object -First 1
+          if (-not $nupkg) { throw "choco pack produced no .nupkg" }
+
+          if (-not $env:CHOCO_API_KEY) {
+            Write-Host "::warning::CHOCO_API_KEY not set — packed $($nupkg.FullName) but skipping push."
+            exit 0
+          }
+          $source = if ($env:CHOCO_PUSH_SOURCE) { $env:CHOCO_PUSH_SOURCE } else { 'https://push.chocolatey.org/' }
+          choco push $nupkg.FullName --source $source --api-key $env:CHOCO_API_KEY
+
+  publish-homebrew:
+    needs: build-tarball
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Render formula
+        run: |
+          set -euo pipefail
+          version='${{ needs.build-tarball.outputs.version }}'
+          sha='${{ needs.build-tarball.outputs.sha256 }}'
+          mkdir -p rendered
+          sed \
+            -e "s/__VERSION__/$version/g" \
+            -e "s/__SHA256__/$sha/g" \
+            packaging/homebrew/token-usage.rb > rendered/token-usage.rb
+          echo "----- rendered formula -----"
+          cat rendered/token-usage.rb
+
+      - name: Open PR against homebrew-tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not set — skipping homebrew-tap PR."
+            exit 0
+          fi
+          version='${{ needs.build-tarball.outputs.version }}'
+          branch="token-usage-${version}"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/FactusConsulting/homebrew-tap.git" tap
+          cd tap
+          git checkout -B "$branch"
+          mkdir -p Formula
+          cp ../rendered/token-usage.rb Formula/token-usage.rb
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/token-usage.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+          git commit -m "token-usage ${version}"
+          git push -f origin "$branch"
+          gh pr create \
+            --repo FactusConsulting/homebrew-tap \
+            --head "$branch" --base main \
+            --title "token-usage ${version}" \
+            --body "Bump token-usage to ${version}. Auto-opened by token-usage release workflow." \
+            || gh pr edit "$branch" --repo FactusConsulting/homebrew-tap \
+                 --title "token-usage ${version}" \
+                 --body "Bump token-usage to ${version}. Auto-opened by token-usage release workflow."

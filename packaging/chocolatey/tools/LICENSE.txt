@@ -1,0 +1,6 @@
+token-usage is private software owned by Factus Consulting.
+
+This Chocolatey package is distributed via a private feed and is not
+licensed for public redistribution. Internal use only.
+
+Source: https://github.com/FactusConsulting/token-usage
