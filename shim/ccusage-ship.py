@@ -124,8 +124,10 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
 
     ccusage reports per-model breakdowns when `modelBreakdowns` is present
     (newer versions), but the top-level totals are always there. If only the
-    totals are available we attribute everything to a single synthetic
-    "aggregate" model so the dashboard still adds up.
+    totals are available (e.g. codex, which ccusage doesn't break down per
+    model) we attribute everything to a synthetic model named after the
+    source itself (e.g. "codex") so it's labelled meaningfully in the
+    dashboard instead of a generic "aggregate".
     """
     events: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -156,7 +158,7 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
         breakdowns = row.get("modelBreakdowns") or []
         if not breakdowns:
             breakdowns = [{
-                "modelName": (row.get("modelsUsed") or ["aggregate"])[0],
+                "modelName": (row.get("modelsUsed") or [source])[0],
                 "inputTokens": row.get("inputTokens", 0),
                 "outputTokens": row.get("outputTokens", 0),
                 "cacheCreationTokens": row.get("cacheCreationTokens", 0),
