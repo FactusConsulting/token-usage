@@ -53,9 +53,18 @@ if (-not $nodeCmd) {
     Write-Host "[install] node already present: $($nodeCmd.Source)"
 }
 
-# 2. ccusage via npm -g (upgraded on every run).
-Write-Host "[install] (re)installing ccusage globally via npm..."
-& npm install -g ccusage | Out-Host
+# 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
+# Packagers (choco / brew / nix) all read this same file, so a single bump
+# propagates everywhere.
+$ccusageVersionFile = Join-Path $RepoRoot 'CCUSAGE_VERSION'
+if (Test-Path $ccusageVersionFile) {
+    $ccusageVersion = (Get-Content -Raw $ccusageVersionFile).Trim()
+    Write-Host "[install] (re)installing ccusage@$ccusageVersion globally via npm..."
+    & npm install -g "ccusage@$ccusageVersion" | Out-Host
+} else {
+    Write-Host "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
+    & npm install -g ccusage | Out-Host
+}
 
 # 3. Shim files.
 Copy-Item -Force $shimSrc (Join-Path $installDir 'ccusage-ship.py')

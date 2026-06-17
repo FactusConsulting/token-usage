@@ -39,9 +39,18 @@ else
     echo "[install] node $(node --version) already present"
 fi
 
-# 2. ccusage via npm -g.
-echo "[install] (re)installing ccusage globally..."
-sudo npm install -g ccusage
+# 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
+# Packagers (choco / brew / nix) all read this same file, so a single bump
+# propagates everywhere.
+CCUSAGE_VERSION_FILE="$REPO_ROOT/CCUSAGE_VERSION"
+if [ -f "$CCUSAGE_VERSION_FILE" ]; then
+    CCUSAGE_VERSION="$(tr -d '\n' < "$CCUSAGE_VERSION_FILE")"
+    echo "[install] (re)installing ccusage@$CCUSAGE_VERSION globally..."
+    sudo npm install -g "ccusage@$CCUSAGE_VERSION"
+else
+    echo "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
+    sudo npm install -g ccusage
+fi
 
 # 3. Shim file + env template.
 install -m 0644 "$SHIM_SRC" "$INSTALL_DIR/ccusage-ship.py"

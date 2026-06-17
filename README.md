@@ -90,6 +90,74 @@ reason we still start with Langfuse is that it gives one pane of glass for
 LLM-related work (including future per-trace data from real apps) and the
 extra fit cost is one half-empty observation per day per source.
 
+## Installation via package managers
+
+Three packaging channels are wired up for this private repo. All three install
+the shim and pin the same upstream ccusage version (see `CCUSAGE_VERSION` at
+repo root — Renovate bumps it via PR).
+
+### Chocolatey (Windows)
+
+Published to a private Chocolatey feed (the repo is private, so the package
+cannot be hosted on community.chocolatey.org).
+
+```powershell
+# One-time: configure the private feed.
+choco source add --name token-usage --source "<private-feed-url>"
+# Install.
+choco install token-usage -s "<private-feed-url>"
+```
+
+The Chocolatey package downloads the release zip from a private GitHub
+release, so the user must export a PAT before running install:
+
+```powershell
+$env:GITHUB_TOKEN = "ghp_..."   # PAT with `repo` read scope
+choco install token-usage -s "<private-feed-url>"
+```
+
+### Homebrew (macOS + Linux)
+
+Lives in the [`FactusConsulting/homebrew-tap`](https://github.com/FactusConsulting/homebrew-tap)
+tap. Because the repo is private, brew needs an API token to fetch the
+release tarball:
+
+```bash
+export HOMEBREW_GITHUB_API_TOKEN="ghp_..."   # PAT with `repo` read
+brew tap FactusConsulting/tap
+brew install token-usage
+```
+
+Run with `TOKEN_USAGE_DRY_RUN=1 token-usage` once to verify the env vars are
+wired up before scheduling.
+
+### Nix (flake)
+
+```bash
+# One-shot:
+nix run github:FactusConsulting/token-usage
+
+# Or add to a flake input.
+```
+
+Private-repo auth for Nix uses `~/.netrc` (Nix honours it for fetches):
+
+```
+machine github.com
+login <username>
+password ghp_...
+```
+
+Then `nix flake update` to pull a newer `CCUSAGE_VERSION` whenever this repo
+tags a new release.
+
+### Renovate
+
+`CCUSAGE_VERSION` is the single source of truth for the pinned upstream
+ccusage version. Configure Renovate to open a PR whenever a new ccusage
+release is published; merging that PR triggers the next release tag, which
+fans out to all three channels above.
+
 ## License
 
 Private.

@@ -1,0 +1,18 @@
+VERIFICATION
+
+token-usage is a private package distributed on an internal Chocolatey feed.
+The package downloads its payload from a private GitHub release:
+
+  https://github.com/FactusConsulting/token-usage/releases/
+
+The sha256 checksum embedded in chocolateyinstall.ps1 (__CHECKSUM__ at build
+time) is computed by the release workflow against the same source tarball
+attached to the GitHub release. To verify manually:
+
+  1. Authenticate to the private GitHub repo (PAT with `repo` read).
+  2. Download token-usage-<version>.zip from the release.
+  3. Run: Get-FileHash -Algorithm SHA256 .\token-usage-<version>.zip
+  4. Compare against the value baked into chocolateyinstall.ps1.
+
+This package contains NO binaries beyond the install scripts; the payload is
+plain Python / PowerShell source from the repo.
