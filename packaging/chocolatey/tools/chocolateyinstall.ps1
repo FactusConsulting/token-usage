@@ -2,11 +2,11 @@
 Chocolatey install script for token-usage.
 
 The release workflow substitutes:
-  __VERSION__   — semver of the tag, e.g. 1.4.0
-  __CHECKSUM__  — sha256 of the GitHub release source tarball
+  __VERSION__   - semver of the tag, e.g. 1.4.0
+  __CHECKSUM__  - sha256 of the GitHub release source tarball
 
 Public download: this package targets a PUBLIC GitHub release. The zip is
-fetched anonymously from the release assets — no token or auth header needed.
+fetched anonymously from the release assets - no token or auth header needed.
 #>
 $ErrorActionPreference = 'Stop'
 
@@ -19,7 +19,7 @@ $toolsDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $extractDir  = Join-Path $toolsDir 'src'
 
 # Install-ChocolateyZipPackage downloads + verifies + extracts the zip.
-# The release is public, so the asset downloads anonymously — no auth header.
+# The release is public, so the asset downloads anonymously - no auth header.
 $args = @{
     PackageName    = $packageName
     UnzipLocation  = $extractDir
