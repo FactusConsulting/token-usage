@@ -30,29 +30,39 @@
 
           dontBuild = true;
 
+          # The installed file needs an executable shebang because we expose
+          # it as a console script. Plain `cp` would leave it without one,
+          # so `nix run` would have to invoke python explicitly. patchShebangs
+          # rewrites #!/usr/bin/env python3 to the Nix-store python so the
+          # subprocess shim invocation works on any host.
           installPhase = ''
             runHook preInstall
             mkdir -p $out/bin $out/share/token-usage
-            install -m 0755 shim/ccusage-ship.py $out/bin/ccusage-ship
+            cp shim/ccusage-ship.py $out/bin/ccusage-ship
+            sed -i '1i#!/usr/bin/env python3' $out/bin/ccusage-ship
+            chmod 0755 $out/bin/ccusage-ship
             cp CCUSAGE_VERSION $out/share/token-usage/CCUSAGE_VERSION
             runHook postInstall
           '';
         };
 
-        # Wrapper: ensures node + a pinned ccusage are on PATH, then runs
-        # the shim. ccusage is fetched via `npx` at first run (no nixpkgs
-        # entry for ccusage exists; npx caches under XDG_CACHE_HOME).
+        # Real `ccusage` binary on PATH so the shim's
+        # `subprocess.check_output(["ccusage", ...])` finds it.
+        # Earlier draft used a bash function exported with `export -f` which
+        # is NOT inherited by Python subprocesses (only by other bash
+        # subshells) — Codex caught it. Delegates to npx-with-pinned-version
+        # under the hood.
+        ccusageWrapper = pkgs.writeShellScriptBin "ccusage" ''
+          set -euo pipefail
+          exec ${pkgs.nodejs_20}/bin/npx --yes "ccusage@${ccusageVersion}" "$@"
+        '';
+
+        # Top-level entry point. Adds ccusage to PATH and runs the shim
+        # console script.
         tokenUsage = pkgs.writeShellApplication {
           name = "token-usage";
-          runtimeInputs = [ pkgs.nodejs_20 tokenUsageShim ];
+          runtimeInputs = [ pkgs.nodejs_20 ccusageWrapper tokenUsageShim ];
           text = ''
-            set -euo pipefail
-            CCUSAGE_PINNED="$(cat "${tokenUsageShim}/share/token-usage/CCUSAGE_VERSION")"
-            export PATH="$(npm config get prefix 2>/dev/null || echo "$HOME/.npm-global")/bin:$PATH"
-            # Use npx with the pinned version. --yes silences the prompt on first
-            # run; npx caches the package so the second call is fast.
-            ccusage() { npx --yes "ccusage@$CCUSAGE_PINNED" "$@"; }
-            export -f ccusage
             exec ccusage-ship "$@"
           '';
         };

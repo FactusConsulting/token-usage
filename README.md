@@ -61,19 +61,20 @@ capture both, **run both installers on a Windows + WSL2 machine**:
 
 | Where you run AI tools | Installer | Hostname tag |
 | :--- | :--- | :--- |
-| PowerShell directly | `installers/windows/install.ps1` | `LARS-DESKTOP` (Windows hostname) |
-| WSL2 (`wsl`, `wsl -d Ubuntu`) | `installers/ubuntu/install.sh` inside WSL | `LARS-DESKTOP-wsl` (override with `TOKEN_USAGE_HOSTNAME`) |
+| PowerShell directly | `installers/windows/install.ps1` | Windows hostname (e.g. `MY-DESKTOP`) |
+| WSL2 (`wsl`, `wsl -d Ubuntu`) | `installers/ubuntu/install.sh` inside WSL | `MY-DESKTOP-wsl` (override with `TOKEN_USAGE_HOSTNAME`) |
 
 Use `TOKEN_USAGE_HOSTNAME` in the WSL2 `.env` to give it a distinct tag — by
 default WSL's hostname is the same as the host Windows, and Langfuse will
 treat the two sets of traces as one host. Suggested convention:
 `<windows-hostname>-wsl` or `<windows-hostname>-ubuntu`.
 
-## Sources I use across machines (Lars-specific reference)
+## Tuning `CCUSAGE_SOURCES`
 
-Default `CCUSAGE_SOURCES` includes `claude,codex,pi` because all three run on
-both Windows machines (PowerShell + WSL2) and the Ubuntu laptop. Adjust per
-machine if you stop using one.
+Default includes `claude,codex,pi,copilot,gemini`. Trim per machine to the
+sources you actually use — there is no benefit to including ones that
+generate zero local data. See [ccusage docs](https://ccusage.com/) for the
+full list of supported sources.
 
 ## Why not LiteLLM or a proxy
 
@@ -92,38 +93,27 @@ extra fit cost is one half-empty observation per day per source.
 
 ## Installation via package managers
 
-Three packaging channels are wired up for this private repo. All three install
-the shim and pin the same upstream ccusage version (see `CCUSAGE_VERSION` at
-repo root — Renovate bumps it via PR).
+Three packaging channels are wired up. All three install the shim and pin
+the same upstream ccusage version (see `CCUSAGE_VERSION` at repo root —
+Renovate bumps it via PR).
 
 ### Chocolatey (Windows)
 
-Published to a private Chocolatey feed (the repo is private, so the package
-cannot be hosted on community.chocolatey.org).
+Published to a public Chocolatey feed hosted on this repo's GitHub Pages:
 
 ```powershell
-# One-time: configure the private feed.
-choco source add --name token-usage --source "<private-feed-url>"
+# One-time: add the feed.
+choco source add --name=token-usage `
+  --source="https://factusconsulting.github.io/token-usage/chocolatey/index.json"
 # Install.
-choco install token-usage -s "<private-feed-url>"
-```
-
-The Chocolatey package downloads the release zip from a private GitHub
-release, so the user must export a PAT before running install:
-
-```powershell
-$env:GITHUB_TOKEN = "ghp_..."   # PAT with `repo` read scope
-choco install token-usage -s "<private-feed-url>"
+choco install token-usage -s token-usage -y
 ```
 
 ### Homebrew (macOS + Linux)
 
-Lives in the [`FactusConsulting/homebrew-tap`](https://github.com/FactusConsulting/homebrew-tap)
-tap. Because the repo is private, brew needs an API token to fetch the
-release tarball:
+Lives in the [`FactusConsulting/homebrew-tap`](https://github.com/FactusConsulting/homebrew-tap) tap:
 
 ```bash
-export HOMEBREW_GITHUB_API_TOKEN="ghp_..."   # PAT with `repo` read
 brew tap FactusConsulting/tap
 brew install token-usage
 ```
@@ -135,28 +125,24 @@ wired up before scheduling.
 
 ```bash
 # One-shot:
-nix run github:FactusConsulting/token-usage
+nix run github:FactusConsulting/token-usage -- --help
 
-# Or add to a flake input.
+# Or add to a flake input and import packages.token-usage.
 ```
 
-Private-repo auth for Nix uses `~/.netrc` (Nix honours it for fetches):
-
-```
-machine github.com
-login <username>
-password ghp_...
-```
-
-Then `nix flake update` to pull a newer `CCUSAGE_VERSION` whenever this repo
-tags a new release.
+The flake exposes:
+* `packages.default` / `packages.token-usage` — the wrapper that puts the
+  pinned ccusage on PATH and runs the shim
+* `packages.token-usage-shim` — just the Python script + deps
+* `apps.default` — same as the wrapper, for `nix run`
+* `devShells.default` — Python + Node + deps for local hacking
 
 ### Renovate
 
 `CCUSAGE_VERSION` is the single source of truth for the pinned upstream
-ccusage version. Configure Renovate to open a PR whenever a new ccusage
-release is published; merging that PR triggers the next release tag, which
-fans out to all three channels above.
+ccusage version. Renovate opens a PR whenever a new ccusage release is
+published; merging it triggers the next release tag, which fans out to all
+three channels above.
 
 ## License
 
