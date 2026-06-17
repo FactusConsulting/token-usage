@@ -65,10 +65,16 @@ class TokenUsage < Formula
       token-usage requires these env vars at runtime (see README):
         LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, CCUSAGE_SOURCES
 
+      Put them in a durable .env that survives `brew upgrade` (the Cellar copy
+      does NOT) and is read from any directory:
+        ~/.config/token-usage/.env
+
       Pinned ccusage version: see #{opt_libexec}/CCUSAGE_VERSION
 
-      Test once with:
-        TOKEN_USAGE_DRY_RUN=1 token-usage
+      Test / backfill from anywhere:
+        token-usage --dry-run                 # print, don't send
+        token-usage --since-days 300          # one-off backfill of 300 days
+        token-usage --since 2026-01-01        # backfill from an exact date
     EOS
   end
 

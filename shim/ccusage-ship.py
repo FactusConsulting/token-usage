@@ -5,9 +5,20 @@ source, then upserts one Langfuse trace per (host, source, date) and one
 generation observation per model used that day. Re-runs are idempotent
 because Langfuse's ingestion API treats `id` as the stable upsert key.
 
-Configuration comes from environment variables — the installer writes a `.env`
-file that this script picks up via `python-dotenv` if installed, or you can
-just `export` them in the shell that runs the cron / systemd unit.
+Configuration comes from environment variables. They can be `export`ed by the
+shell/cron/systemd unit, or written to a `.env` that this script picks up via
+`python-dotenv` (if installed). The `.env` is searched for in this order:
+    1. $XDG_CONFIG_HOME/token-usage/.env  (default ~/.config/token-usage/.env)
+    2. next to this script
+    3. the current working directory
+The config-dir copy (1) is the durable one: it works from any cwd and survives
+a `brew upgrade`, which wipes the copy shipped next to the script.
+
+CLI flags (all optional; without them the env-var defaults apply):
+    --since-days N        (re-)ship the last N days; overrides CCUSAGE_SINCE_DAYS
+    --since YYYY-MM-DD     (re-)ship since an exact date
+    --dry-run             print the batch instead of POSTing
+e.g. a one-off backfill from anywhere:  token-usage --since-days 300
 
 Env vars:
     LANGFUSE_HOST          e.g. https://langfuse.lwa.dk  (required)
@@ -31,6 +42,7 @@ Exit codes:
 """
 from __future__ import annotations
 
+import argparse
 import functools
 import json
 import os
@@ -49,17 +61,28 @@ REQUIRED_ENV = ("LANGFUSE_HOST", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
                 "CCUSAGE_SOURCES")
 
 
-def _load_dotenv_best_effort() -> None:
-    """Load a `.env` next to this script if python-dotenv is available.
+def _config_dir() -> Path:
+    """Durable per-user config dir for token-usage (XDG-aware)."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "token-usage"
 
-    We don't make python-dotenv a hard dep — the systemd/scheduled-task units
-    can also export the vars directly. Failing softly here keeps the shim a
-    single-file install."""
+
+def _load_dotenv_best_effort() -> None:
+    """Load the first `.env` found, searching (in order) the durable per-user
+    config dir, then next to this script, then the current directory.
+
+    The config-dir lookup is what lets a manual `token-usage` run work from any
+    cwd and survive a `brew upgrade`, which wipes the copy shipped next to the
+    script under the Cellar. We don't make python-dotenv a hard dep — the
+    systemd/scheduled-task units can also export the vars directly — so failing
+    softly here keeps the shim a single-file install."""
     try:
         from dotenv import load_dotenv  # type: ignore[import-not-found]
     except ImportError:
         return
     candidates = [
+        _config_dir() / ".env",
         Path(__file__).with_name(".env"),
         Path.cwd() / ".env",
     ]
@@ -240,16 +263,46 @@ def _ship(host_url: str, pk: str, sk: str,
         resp.raise_for_status()
 
 
-def main() -> int:
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="token-usage",
+        description="Ship ccusage daily aggregates to a self-hosted Langfuse "
+                    "instance.")
+    window = p.add_mutually_exclusive_group()
+    window.add_argument(
+        "--since-days", type=int, metavar="N", default=None,
+        help="(Re-)ship the last N days. Overrides CCUSAGE_SINCE_DAYS. "
+             "Handy for one-off backfills, e.g. --since-days 300.")
+    window.add_argument(
+        "--since", metavar="YYYY-MM-DD", default=None,
+        help="(Re-)ship since this exact date. Overrides --since-days and "
+             "CCUSAGE_SINCE_DAYS.")
+    p.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the batch instead of POSTing (same as "
+             "TOKEN_USAGE_DRY_RUN=1).")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
     _load_dotenv_best_effort()
     langfuse_host, pk, sk, sources = _require_env()
+    if args.dry_run:
+        os.environ["TOKEN_USAGE_DRY_RUN"] = "1"
     host = os.environ.get("TOKEN_USAGE_HOSTNAME") or socket.gethostname()
-    try:
-        since_days = int(os.environ.get("CCUSAGE_SINCE_DAYS", "7"))
-    except ValueError:
-        since_days = 7
-    since = (datetime.now(timezone.utc) - timedelta(days=since_days)
-             ).date().isoformat()
+    if args.since:
+        since = args.since
+    else:
+        if args.since_days is not None:
+            since_days = args.since_days
+        else:
+            try:
+                since_days = int(os.environ.get("CCUSAGE_SINCE_DAYS", "7"))
+            except ValueError:
+                since_days = 7
+        since = (datetime.now(timezone.utc) - timedelta(days=since_days)
+                 ).date().isoformat()
 
     failures: list[str] = []
     for source in sources:
