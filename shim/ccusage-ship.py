@@ -119,15 +119,15 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
 
     Each daily row becomes:
       * one trace-create event (id = ccusage-<host>-<source>-<date>)
-      * one generation-create event per modelsUsed entry, with the per-model
-        usage attached as Langfuse's standard `usage` block
+      * one generation-create event per model, carrying token counts in
+        Langfuse v3 `usageDetails` (incl. cache tokens). Cost is left to
+        Langfuse to compute from its dated model pricing.
 
     ccusage reports per-model breakdowns when `modelBreakdowns` is present
-    (newer versions), but the top-level totals are always there. If only the
-    totals are available (e.g. codex, which ccusage doesn't break down per
-    model) we attribute everything to a synthetic model named after the
-    source itself (e.g. "codex") so it's labelled meaningfully in the
-    dashboard instead of a generic "aggregate".
+    (claude). When it isn't, the model name still lives elsewhere: codex puts
+    it in a `models` dict (e.g. {"gpt-5.5": {...}}). We use that real model
+    name so Langfuse can price the generation; only if no model name is found
+    anywhere do we fall back to the source name.
     """
     events: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -151,19 +151,33 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
                     "cache_creation_tokens": row.get("cacheCreationTokens", 0),
                     "cache_read_tokens": row.get("cacheReadTokens", 0),
                 },
-                "tags": [host, source, f"date:{date}"],
+                # Only host + source as tags — the date is already in the trace
+                # timestamp and metadata.date, and a per-day tag would add one
+                # tag per shipped day, flooding the tag picker with hundreds of
+                # `date:...` entries.
+                "tags": [host, source],
             },
         })
 
         breakdowns = row.get("modelBreakdowns") or []
         if not breakdowns:
+            # Sources without modelBreakdowns (e.g. codex) still name their
+            # model elsewhere: claude uses `modelsUsed` (a list), codex uses
+            # `models` (a dict keyed by model name, e.g. {"gpt-5.5": {...}}).
+            # Prefer the real model name so Langfuse can price it (a generic
+            # "codex" label matches no model definition -> cost 0); fall back
+            # to the source name only if neither is present.
+            model_name = (
+                row.get("modelsUsed")
+                or list(row.get("models") or {})
+                or [source]
+            )[0]
             breakdowns = [{
-                "modelName": (row.get("modelsUsed") or [source])[0],
+                "modelName": model_name,
                 "inputTokens": row.get("inputTokens", 0),
                 "outputTokens": row.get("outputTokens", 0),
                 "cacheCreationTokens": row.get("cacheCreationTokens", 0),
                 "cacheReadTokens": row.get("cacheReadTokens", 0),
-                "cost": row.get("totalCost", 0.0),
             }]
 
         for bd in breakdowns:
@@ -180,22 +194,27 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
                     "model": model,
                     "startTime": f"{date}T00:00:00Z",
                     "endTime": f"{date}T23:59:59Z",
-                    "usage": {
+                    # usageDetails (Langfuse v3) makes every token type
+                    # first-class: cache tokens count toward the totals and
+                    # show up in "Usage by type", instead of being buried in
+                    # metadata where Langfuse ignores them. Langfuse sums these
+                    # for the trace's total tokens. For Claude the cache_read
+                    # bucket dwarfs input/output, so this is the difference
+                    # between the dashboard undercounting by ~100x and being
+                    # accurate. Key names match Anthropic's so Langfuse model
+                    # pricing can map cache rates when defined.
+                    "usageDetails": {
                         "input": int(bd.get("inputTokens", 0)),
                         "output": int(bd.get("outputTokens", 0)),
-                        "total": int(bd.get("inputTokens", 0))
-                                 + int(bd.get("outputTokens", 0)),
-                        "unit": "TOKENS",
-                        "inputCost": 0,
-                        "outputCost": 0,
-                        "totalCost": float(bd.get("cost", 0.0)),
-                    },
-                    "metadata": {
-                        "cache_creation_tokens": int(
+                        "cache_creation_input_tokens": int(
                             bd.get("cacheCreationTokens", 0)),
-                        "cache_read_tokens": int(
+                        "cache_read_input_tokens": int(
                             bd.get("cacheReadTokens", 0)),
                     },
+                    # No costDetails: Langfuse computes cost itself from these
+                    # token counts x its dated model prices (historically
+                    # correct), and leaves self-hosted models with no price
+                    # definition at 0 instead of a bogus number.
                 },
             })
     return events
