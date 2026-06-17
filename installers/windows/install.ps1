@@ -35,7 +35,7 @@ $envExample = Join-Path $RepoRoot 'shim\.env.example'
 $reqFile    = Join-Path $RepoRoot 'shim\requirements.txt'
 
 if (-not (Test-Path $shimSrc)) {
-    throw "Expected to find $shimSrc — pass -RepoRoot to point at the checkout."
+    throw "Expected to find $shimSrc - pass -RepoRoot to point at the checkout."
 }
 
 Write-Host "[install] target dir: $installDir"
@@ -72,7 +72,7 @@ Copy-Item -Force $shimSrc (Join-Path $installDir 'ccusage-ship.py')
 $envTarget = Join-Path $installDir '.env'
 if (-not (Test-Path $envTarget)) {
     Copy-Item -Force $envExample $envTarget
-    Write-Warning "[install] wrote placeholder .env at $envTarget — edit it to set LANGFUSE_* keys."
+    Write-Warning "[install] wrote placeholder .env at $envTarget - edit it to set LANGFUSE_* keys."
 } else {
     Write-Host "[install] existing .env preserved at $envTarget"
 }
@@ -104,7 +104,7 @@ set TOKEN_USAGE_DIR=%LOCALAPPDATA%\token-usage
 exit /b %ERRORLEVEL%
 "@ | Set-Content -Path $wrapper -Encoding ASCII
 
-# 6. Scheduled Task — hourly, runs even when user is logged out (S4U logon).
+# 6. Scheduled Task - hourly, runs even when user is logged out (S4U logon).
 $taskName = 'TokenUsageCcusageShip'
 $action = New-ScheduledTaskAction -Execute $wrapper
 $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(2)) `

@@ -3,7 +3,7 @@ Uninstall script for token-usage.
 
 Removes the Scheduled Task and the install dir under %LOCALAPPDATA%. Leaves
 node + python alone (other packages may depend on them). The .env stays in
-$installDir until the dir is removed — there's nothing secret-rotation can
+$installDir until the dir is removed - there's nothing secret-rotation can
 do here that a user couldn't do by hand, so we just nuke it.
 #>
 $ErrorActionPreference = 'Continue'
