@@ -44,10 +44,36 @@ in the Langfuse UI.
 
 1. **Deploy Langfuse** to your cluster via the manifests in `flux-home/applications/langfuse/` (see that PR). Once it is up at `https://langfuse.lwa.dk`, log in and create a project — note the public + secret API keys.
 2. **Bootstrap each PC**:
-   - Windows: `powershell -ExecutionPolicy Bypass -File installers/windows/install.ps1`
-   - Ubuntu: `bash installers/ubuntu/install.sh`
+   - Windows (PowerShell side): `powershell -ExecutionPolicy Bypass -File installers/windows/install.ps1`
+   - Windows (WSL2 side): `bash installers/ubuntu/install.sh` — yes, the **same** Ubuntu installer runs unchanged inside WSL2. See "Windows + WSL2" below.
+   - Ubuntu laptop: `bash installers/ubuntu/install.sh`
 3. On each PC, edit the generated `.env` and fill in `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST=https://langfuse.lwa.dk`, and the list of `CCUSAGE_SOURCES` you actually use.
 4. The scheduled task / systemd timer runs `ccusage-ship.py` hourly. Verify in the Langfuse UI under that project's Traces.
+
+## Windows + WSL2 = two separate installs
+
+Claude Code, Codex CLI, pi-agent etc. each write their session JSONLs to the
+home directory of the OS they actually run in. A Claude Code session started
+in PowerShell writes to `C:\Users\<you>\.claude\projects\…`; a Claude Code
+session started inside WSL2 writes to `/home/<you>/.claude/projects/…`.
+ccusage on each side only sees the files in its own filesystem — so to
+capture both, **run both installers on a Windows + WSL2 machine**:
+
+| Where you run AI tools | Installer | Hostname tag |
+| :--- | :--- | :--- |
+| PowerShell directly | `installers/windows/install.ps1` | `LARS-DESKTOP` (Windows hostname) |
+| WSL2 (`wsl`, `wsl -d Ubuntu`) | `installers/ubuntu/install.sh` inside WSL | `LARS-DESKTOP-wsl` (override with `TOKEN_USAGE_HOSTNAME`) |
+
+Use `TOKEN_USAGE_HOSTNAME` in the WSL2 `.env` to give it a distinct tag — by
+default WSL's hostname is the same as the host Windows, and Langfuse will
+treat the two sets of traces as one host. Suggested convention:
+`<windows-hostname>-wsl` or `<windows-hostname>-ubuntu`.
+
+## Sources I use across machines (Lars-specific reference)
+
+Default `CCUSAGE_SOURCES` includes `claude,codex,pi` because all three run on
+both Windows machines (PowerShell + WSL2) and the Ubuntu laptop. Adjust per
+machine if you stop using one.
 
 ## Why not LiteLLM or a proxy
 
