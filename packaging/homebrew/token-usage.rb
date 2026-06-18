@@ -47,10 +47,9 @@ class TokenUsage < Formula
            "-r", libexec/"shim/requirements.txt"
 
     # token-usage wrapper: prepend our pinned ccusage to PATH, then run the
-    # shim via the venv python. Honors TOKEN_USAGE_DRY_RUN /
-    # TOKEN_USAGE_HOSTNAME / LANGFUSE_* from the user's env (no .env
-    # required on this install path — brew users typically wire up env via
-    # launchd/systemd).
+    # shim via the venv python. The shim reads its config from
+    # ~/.config/token-usage/.env (XDG-aware), so the wrapper needs no env of
+    # its own — that's also what the brew service below relies on.
     (bin/"token-usage").write <<~SH
       #!/bin/bash
       set -euo pipefail
@@ -60,21 +59,41 @@ class TokenUsage < Formula
     chmod 0755, bin/"token-usage"
   end
 
+  # `brew services start token-usage` registers an hourly importer (a systemd
+  # timer on Linux, launchd on macOS) — no repo clone, no hand-written unit.
+  # The run reads ~/.config/token-usage/.env for everything, including
+  # CCUSAGE_SINCE_DAYS (how many days back each run ships, default 14).
+  service do
+    run [opt_bin/"token-usage"]
+    run_type :interval
+    interval 3600
+    log_path var/"log/token-usage.log"
+    error_log_path var/"log/token-usage.log"
+  end
+
   def caveats
     <<~EOS
-      token-usage requires these env vars at runtime (see README):
-        LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, CCUSAGE_SOURCES
+      1) Create a durable config (survives `brew upgrade`, read from any dir):
 
-      Put them in a durable .env that survives `brew upgrade` (the Cellar copy
-      does NOT) and is read from any directory:
-        ~/.config/token-usage/.env
+           mkdir -p ~/.config/token-usage
+           cp #{opt_libexec}/shim/.env.example ~/.config/token-usage/.env
+           "${EDITOR:-nano}" ~/.config/token-usage/.env
+
+         Fill in LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY /
+         CCUSAGE_SOURCES. Set TOKEN_USAGE_HOSTNAME if this machine shares a
+         hostname with another install (e.g. WSL2 vs its Windows host), and
+         CCUSAGE_SINCE_DAYS for how many days each run backfills (default 14).
+
+      2) Start the hourly importer:
+
+           brew services start token-usage
+
+      Run manually / one-off backfill from anywhere:
+           token-usage --dry-run                 # print, don't send
+           token-usage --since-days 300          # backfill 300 days
+           token-usage --since 2026-01-01        # backfill from an exact date
 
       Pinned ccusage version: see #{opt_libexec}/CCUSAGE_VERSION
-
-      Test / backfill from anywhere:
-        token-usage --dry-run                 # print, don't send
-        token-usage --since-days 300          # one-off backfill of 300 days
-        token-usage --since 2026-01-01        # backfill from an exact date
     EOS
   end
 
