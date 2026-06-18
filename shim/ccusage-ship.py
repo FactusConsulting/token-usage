@@ -1,8 +1,8 @@
-"""Ship ccusage daily aggregates to a self-hosted Langfuse instance.
+"""Ship ccusage usage to a self-hosted Langfuse instance.
 
-Reads `ccusage <source> daily --json --since=<since>` for each configured
-source, then upserts one Langfuse trace per (host, source, date) and one
-generation observation per model used that day. Re-runs are idempotent
+Reads `ccusage <source> <granularity> --json --since=<since>` for each
+configured source, then upserts one Langfuse trace per session (default) — or
+per day — and one generation observation per model. Re-runs are idempotent
 because Langfuse's ingestion API treats `id` as the stable upsert key.
 
 Configuration comes from environment variables. They can be `export`ed by the
@@ -17,6 +17,8 @@ a `brew upgrade`, which wipes the copy shipped next to the script.
 CLI flags (all optional; without them the env-var defaults apply):
     --since-days N        (re-)ship the last N days; overrides CCUSAGE_SINCE_DAYS
     --since YYYY-MM-DD     (re-)ship since an exact date
+    --granularity G       "session" (default) or "daily"; overrides
+                          CCUSAGE_GRANULARITY
     --dry-run             print the batch instead of POSTing
 e.g. a one-off backfill from anywhere:  token-usage --since-days 300
 
@@ -30,6 +32,9 @@ Env vars:
                            Default 14 — wide enough that a machine offline for
                            a week or two backfills the gap on its next run,
                            without ballooning request volume (upserts dedupe).
+    CCUSAGE_GRANULARITY    "session" (default) or "daily". Session groups one
+                           trace per ccusage session (tagged with its project);
+                           daily groups one trace per calendar day.
     TOKEN_USAGE_HOSTNAME   override the hostname used as the trace
                            grouping key (default: socket.gethostname()).
     TOKEN_USAGE_DRY_RUN    if set to "1", print what would be POSTed
@@ -125,27 +130,34 @@ def _ccusage_exe() -> str:
     return exe
 
 
-def _ccusage_daily(source: str, since: str) -> list[dict[str, Any]]:
-    """Run `ccusage <source> daily --json --since <since>` and return the
-    `daily` array. Raises CalledProcessError on a non-zero exit so the caller
-    can decide whether to fail the whole run or just skip this source."""
+def _ccusage_rows(source: str, since: str,
+                  granularity: str) -> list[dict[str, Any]]:
+    """Run `ccusage <source> <granularity> --json --since <since>` and return
+    the rows. granularity is "session" (default) or "daily". Raises
+    CalledProcessError on a non-zero exit so the caller can decide whether to
+    fail the whole run or just skip this source."""
     out = subprocess.check_output(
-        [_ccusage_exe(), source, "daily", "--json", "--since", since],
+        [_ccusage_exe(), source, granularity, "--json", "--since", since],
         text=True,
     )
     payload = json.loads(out)
-    return list(payload.get("daily") or [])
+    key = "sessions" if granularity == "session" else "daily"
+    return list(payload.get(key) or [])
 
 
-def _build_batch(rows: list[dict[str, Any]], host: str,
-                 source: str) -> list[dict[str, Any]]:
-    """Map ccusage daily rows to a Langfuse ingestion batch.
+def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
+                 granularity: str = "session") -> list[dict[str, Any]]:
+    """Map ccusage rows to a Langfuse ingestion batch.
 
-    Each daily row becomes:
-      * one trace-create event (id = ccusage-<host>-<source>-<date>)
-      * one generation-create event per model, carrying token counts in
-        Langfuse v3 `usageDetails` (incl. cache tokens). Cost is left to
-        Langfuse to compute from its dated model pricing.
+    granularity is "session" (default) or "daily":
+      * session — one trace per ccusage sessionId, timestamped at the session's
+        first activity and tagged with its project, so you can see which
+        session / project drove the spend.
+      * daily — one trace per calendar day.
+
+    Either way each trace gets one generation-create event per model, carrying
+    token counts in Langfuse v3 `usageDetails` (incl. cache tokens); cost is
+    left to Langfuse to compute from its dated model pricing.
 
     ccusage reports per-model breakdowns when `modelBreakdowns` is present
     (claude). When it isn't, the model name still lives elsewhere: codex puts
@@ -156,10 +168,34 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
     events: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
     for row in rows:
-        date = row.get("date")
-        if not date:
-            continue
-        trace_id = f"ccusage-{host}-{source}-{date}"
+        if granularity == "daily":
+            date = row.get("date")
+            if not date:
+                continue
+            trace_id = f"ccusage-{host}-{source}-{date}"
+            trace_ts = start = f"{date}T00:00:00Z"
+            end = f"{date}T23:59:59Z"
+            # Only host + source as tags — the date is already in the trace
+            # timestamp and metadata, so a per-day tag would just flood the tag
+            # picker with hundreds of `date:...` entries.
+            metadata = {"host": host, "source": source, "date": date}
+            tags = [host, source]
+        else:  # session
+            sid = row.get("sessionId")
+            if not sid:
+                continue
+            trace_id = f"ccusage-{host}-{source}-sess-{sid}"
+            start = row.get("firstActivity") or now_iso
+            end = row.get("lastActivity") or start
+            trace_ts = start
+            project = row.get("projectPath")
+            metadata = {"host": host, "source": source, "sessionId": sid,
+                        "project": project,
+                        "firstActivity": start, "lastActivity": end}
+            # Tag the project so it's filterable; the sessionId would just flood
+            # the tag picker, so it stays in metadata only.
+            tags = [host, source] + ([f"project:{project}"] if project else [])
+
         events.append({
             "id": f"{trace_id}-trace-{int(time.time() * 1000)}",
             "type": "trace-create",
@@ -167,19 +203,9 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
             "body": {
                 "id": trace_id,
                 "name": f"ccusage:{source}",
-                "timestamp": f"{date}T00:00:00Z",
-                "metadata": {
-                    "host": host,
-                    "source": source,
-                    "date": date,
-                    "cache_creation_tokens": row.get("cacheCreationTokens", 0),
-                    "cache_read_tokens": row.get("cacheReadTokens", 0),
-                },
-                # Only host + source as tags — the date is already in the trace
-                # timestamp and metadata.date, and a per-day tag would add one
-                # tag per shipped day, flooding the tag picker with hundreds of
-                # `date:...` entries.
-                "tags": [host, source],
+                "timestamp": trace_ts,
+                "metadata": metadata,
+                "tags": tags,
             },
         })
 
@@ -216,8 +242,8 @@ def _build_batch(rows: list[dict[str, Any]], host: str,
                     "traceId": trace_id,
                     "name": f"{source}:{model}",
                     "model": model,
-                    "startTime": f"{date}T00:00:00Z",
-                    "endTime": f"{date}T23:59:59Z",
+                    "startTime": start,
+                    "endTime": end,
                     # usageDetails (Langfuse v3) makes every token type
                     # first-class: cache tokens count toward the totals and
                     # show up in "Usage by type", instead of being buried in
@@ -251,24 +277,39 @@ def _ship(host_url: str, pk: str, sk: str,
     if os.environ.get("TOKEN_USAGE_DRY_RUN") == "1":
         print(json.dumps({"batch": batch}, indent=2))
         return
-    resp = requests.post(
-        f"{host_url}/api/public/ingestion",
-        auth=(pk, sk),
-        json={"batch": batch},
-        timeout=30,
-    )
-    if resp.status_code >= 400:
-        sys.stderr.write(
-            f"[ccusage-ship] Langfuse rejected batch: "
-            f"HTTP {resp.status_code} {resp.text[:500]}\n")
-        resp.raise_for_status()
+    # Post in chunks so a source with many sessions stays well under Langfuse's
+    # request-size limit; each chunk is an independent ingestion request, and
+    # the deterministic ids mean a retried/overlapping chunk just upserts.
+    for i in range(0, len(batch), 100):
+        chunk = batch[i:i + 100]
+        resp = requests.post(
+            f"{host_url}/api/public/ingestion",
+            auth=(pk, sk),
+            json={"batch": chunk},
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            sys.stderr.write(
+                f"[ccusage-ship] Langfuse rejected batch: "
+                f"HTTP {resp.status_code} {resp.text[:500]}\n")
+            resp.raise_for_status()
+        # 207 multi-status: the request succeeded but some events may have been
+        # rejected. Surface that instead of silently undercounting.
+        try:
+            errors = (resp.json() or {}).get("errors") or []
+        except ValueError:
+            errors = []
+        if errors:
+            sys.stderr.write(
+                f"[ccusage-ship] {len(errors)} event(s) rejected by Langfuse: "
+                f"{json.dumps(errors[:2])[:400]}\n")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="token-usage",
-        description="Ship ccusage daily aggregates to a self-hosted Langfuse "
-                    "instance.")
+        description="Ship ccusage usage (per session by default) to a "
+                    "self-hosted Langfuse instance.")
     window = p.add_mutually_exclusive_group()
     window.add_argument(
         "--since-days", type=int, metavar="N", default=None,
@@ -278,6 +319,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--since", metavar="YYYY-MM-DD", default=None,
         help="(Re-)ship since this exact date. Overrides --since-days and "
              "CCUSAGE_SINCE_DAYS.")
+    p.add_argument(
+        "--granularity", choices=["session", "daily"], default=None,
+        help="Group traces by session (default) or by day. Overrides "
+             "CCUSAGE_GRANULARITY. Session shows which session/project drove "
+             "the spend; daily is one trace per calendar day.")
     p.add_argument(
         "--dry-run", action="store_true",
         help="Print the batch instead of POSTing (same as "
@@ -292,6 +338,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         os.environ["TOKEN_USAGE_DRY_RUN"] = "1"
     host = os.environ.get("TOKEN_USAGE_HOSTNAME") or socket.gethostname()
+    granularity = (args.granularity
+                   or os.environ.get("CCUSAGE_GRANULARITY") or "session")
+    if granularity not in ("session", "daily"):
+        granularity = "session"
     if args.since:
         since = args.since
     else:
@@ -308,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     failures: list[str] = []
     for source in sources:
         try:
-            rows = _ccusage_daily(source, since)
+            rows = _ccusage_rows(source, since, granularity)
         except subprocess.CalledProcessError as exc:
             sys.stderr.write(
                 f"[ccusage-ship] {source}: ccusage exited "
@@ -319,15 +369,16 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"[ccusage-ship] {source}: {exc}\n")
             failures.append(source)
             continue
-        batch = _build_batch(rows, host, source)
+        batch = _build_batch(rows, host, source, granularity)
         try:
             _ship(langfuse_host, pk, sk, batch)
         except requests.RequestException as exc:
             sys.stderr.write(f"[ccusage-ship] {source}: ship failed: {exc}\n")
             failures.append(source)
             continue
+        unit = "session" if granularity == "session" else "day"
         sys.stderr.write(
-            f"[ccusage-ship] {source}: shipped {len(rows)} day(s), "
+            f"[ccusage-ship] {source}: shipped {len(rows)} {unit}(s), "
             f"{len(batch)} event(s)\n")
 
     return 2 if failures else 0
