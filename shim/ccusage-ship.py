@@ -158,11 +158,15 @@ def _project_label(project_path: str | None) -> str | None:
     """
     if not project_path:
         return None
-    m = re.search(r"source[-/]([^/]+)", project_path)
+    # Drop per-run scaffolding ccusage appends for subagent sessions
+    # (".../<uuid>/subagents/workflows") — the project is the first path
+    # segment; the rest just fragments the label.
+    head = project_path.split("/", 1)[0]
+    m = re.search(r"source[-/]([^/]+)", head)
     # Strip leading/trailing separators the path encoding leaves behind (a
     # trailing slash becomes a trailing `-`, so e.g. ".../voice-pi/" ->
     # "voice-pi--"); internal hyphens in the name are kept.
-    label = (m.group(1) if m else project_path).strip("-")
+    label = (m.group(1) if m else head).strip("-")
     return label or None
 
 
