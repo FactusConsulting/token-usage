@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>token-usage</id>
+    <version>0.1.8</version>
+    <title>token-usage</title>
+    <authors>Lars W. Andersen</authors>
+    <owners>FactusConsulting</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/FactusConsulting/token-usage/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/FactusConsulting/token-usage</projectUrl>
+    <description>Cross-machine LLM token-usage tracking. Installs the token-usage shim plus a
+Scheduled Task that runs ccusage hourly and ships daily aggregates to a
+self-hosted Langfuse instance.
+
+Install from the public Chocolatey feed hosted on this repo's GitHub Pages
+(see the README for the `choco source add` command).
+
+After install, edit `%LOCALAPPDATA%\token-usage\.env` and fill in the
+`LANGFUSE_*` keys.</description>
+    <summary>Ship ccusage daily aggregates to a self-hosted Langfuse instance</summary>
+    <releaseNotes>https://github.com/FactusConsulting/token-usage/releases/tag/v0.1.8</releaseNotes>
+    <tags>ccusage langfuse llm token-usage observability</tags>
+    <projectSourceUrl>https://github.com/FactusConsulting/token-usage</projectSourceUrl>
+    <packageSourceUrl>https://github.com/FactusConsulting/token-usage</packageSourceUrl>
+    <docsUrl>https://github.com/FactusConsulting/token-usage/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/FactusConsulting/token-usage/issues</bugTrackerUrl>
+    <dependencies>
+      <dependency id="nodejs-lts" version="20.0.0" />
+      <dependency id="python" version="3.10.0" />
+    </dependencies>
+  </metadata>
+</package>
