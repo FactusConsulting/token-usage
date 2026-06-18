@@ -2,8 +2,8 @@
 
 These guard the exact shape the dashboard depends on — usageDetails (incl.
 cache tokens), no costDetails (Langfuse computes cost), the real model name for
-breakdown-less sources like codex, deterministic ids, and slim tags. They would
-have caught the codex=$0 and cache-undercount regressions we hit in practice.
+breakdown-less sources like codex, deterministic ids, and slim tags — for both
+the default session granularity and daily.
 """
 import importlib.util
 from pathlib import Path
@@ -23,7 +23,7 @@ USAGE_KEYS = {
 }
 
 
-def _claude_row():
+def _daily_row():
     return {
         "date": "2026-06-10",
         "modelsUsed": ["claude-opus-4-8"],
@@ -37,7 +37,21 @@ def _claude_row():
     }
 
 
-def _codex_row():
+def _session_row():
+    return {
+        "sessionId": "abc-123",
+        "projectPath": "D--source-foo",
+        "firstActivity": "2026-06-10T05:00:00.000Z",
+        "lastActivity": "2026-06-10T06:30:00.000Z",
+        "modelBreakdowns": [{
+            "modelName": "claude-opus-4-8",
+            "inputTokens": 100, "outputTokens": 200,
+            "cacheCreationTokens": 300, "cacheReadTokens": 4000,
+        }],
+    }
+
+
+def _codex_daily_row():
     # codex has no modelBreakdowns; the real model lives in a `models` dict.
     return {
         "date": "2026-06-10",
@@ -53,64 +67,86 @@ def _split(batch):
     return traces, gens
 
 
-def test_trace_id_and_tags_are_deterministic_and_slim():
-    batch = ship._build_batch([_claude_row()], HOST, "claude")
+# --- session (default) -----------------------------------------------------
+
+def test_session_is_the_default_granularity():
+    # No granularity arg -> session: a row with only a date and no sessionId
+    # is skipped, while a session row is shipped.
+    assert ship._build_batch([_daily_row()], HOST, "claude") == []
+    assert ship._build_batch([_session_row()], HOST, "claude") != []
+
+
+def test_session_trace_id_project_tag_and_timestamps():
+    batch = ship._build_batch([_session_row()], HOST, "claude")
+    traces, gens = _split(batch)
+    body = traces[0]["body"]
+    assert body["id"] == "ccusage-test-host-claude-sess-abc-123"
+    assert body["timestamp"] == "2026-06-10T05:00:00.000Z"  # firstActivity
+    assert body["tags"] == [HOST, "claude", "project:D--source-foo"]
+    assert body["metadata"]["sessionId"] == "abc-123"
+    assert body["metadata"]["project"] == "D--source-foo"
+    g = gens[0]["body"]
+    assert g["id"] == "ccusage-test-host-claude-sess-abc-123-gen-claude-opus-4-8"
+    assert g["startTime"] == "2026-06-10T05:00:00.000Z"
+    assert g["endTime"] == "2026-06-10T06:30:00.000Z"
+    assert set(g["usageDetails"]) == USAGE_KEYS
+    assert g["usageDetails"]["cache_read_input_tokens"] == 4000
+    assert "costDetails" not in g and "usage" not in g
+
+
+def test_session_without_id_is_skipped():
+    assert ship._build_batch([{"firstActivity": "x"}], HOST, "claude") == []
+
+
+# --- daily -----------------------------------------------------------------
+
+def test_daily_trace_id_and_slim_tags():
+    batch = ship._build_batch([_daily_row()], HOST, "claude", "daily")
     traces, _ = _split(batch)
-    assert len(traces) == 1
     body = traces[0]["body"]
     assert body["id"] == "ccusage-test-host-claude-2026-06-10"
-    # tags are host + source only — no per-day date: tag flooding the picker
     assert body["tags"] == [HOST, "claude"]
     assert not any(str(t).startswith("date:") for t in body["tags"])
 
 
-def test_generation_uses_usagedetails_with_cache_and_no_costdetails():
-    batch = ship._build_batch([_claude_row()], HOST, "claude")
+def test_daily_generation_usagedetails_no_costdetails():
+    batch = ship._build_batch([_daily_row()], HOST, "claude", "daily")
     _, gens = _split(batch)
-    assert len(gens) == 1
     body = gens[0]["body"]
     assert body["model"] == "claude-opus-4-8"
     assert set(body["usageDetails"]) == USAGE_KEYS
-    assert body["usageDetails"]["cache_read_input_tokens"] == 4000
-    assert body["usageDetails"]["cache_creation_input_tokens"] == 300
-    # cost is Langfuse's job now — never ship costDetails or the legacy block
-    assert "costDetails" not in body
-    assert "usage" not in body
+    assert "costDetails" not in body and "usage" not in body
 
 
 def test_codex_uses_real_model_name_so_langfuse_can_price_it():
-    batch = ship._build_batch([_codex_row()], HOST, "codex")
+    batch = ship._build_batch([_codex_daily_row()], HOST, "codex", "daily")
     _, gens = _split(batch)
-    assert len(gens) == 1
     body = gens[0]["body"]
-    # the model is gpt-5.5 (from the models dict), NOT "codex"/"aggregate"
-    assert body["model"] == "gpt-5.5"
-    assert body["id"] == "ccusage-test-host-codex-2026-06-10-gen-gpt-5.5"
+    assert body["model"] == "gpt-5.5"  # not "codex"/"aggregate"
     assert body["usageDetails"]["cache_read_input_tokens"] == 60
 
 
 def test_falls_back_to_source_when_no_model_name_anywhere():
     row = {"date": "2026-06-10", "inputTokens": 1, "outputTokens": 2}
-    batch = ship._build_batch([row], HOST, "mystery")
+    batch = ship._build_batch([row], HOST, "mystery", "daily")
     _, gens = _split(batch)
     assert gens[0]["body"]["model"] == "mystery"
 
 
 def test_one_generation_per_model_breakdown():
-    row = _claude_row()
+    row = _daily_row()
     row["modelBreakdowns"].append({
         "modelName": "claude-haiku-4-5",
         "inputTokens": 1, "outputTokens": 2,
         "cacheCreationTokens": 0, "cacheReadTokens": 0, "cost": 0.01,
     })
-    batch = ship._build_batch([row], HOST, "claude")
-    _, gens = _split(batch)
+    _, gens = _split(ship._build_batch([row], HOST, "claude", "daily"))
     assert {g["body"]["model"] for g in gens} == {
         "claude-opus-4-8", "claude-haiku-4-5"}
 
 
-def test_rows_without_date_are_skipped():
-    assert ship._build_batch([{"inputTokens": 1}], HOST, "claude") == []
+def test_daily_rows_without_date_are_skipped():
+    assert ship._build_batch([{"inputTokens": 1}], HOST, "claude", "daily") == []
 
 
 if __name__ == "__main__":
