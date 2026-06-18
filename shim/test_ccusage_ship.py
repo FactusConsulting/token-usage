@@ -40,7 +40,7 @@ def _daily_row():
 def _session_row():
     return {
         "sessionId": "abc-123",
-        "projectPath": "D--source-foo",
+        "projectPath": "D--source-whisper-dictate",
         "firstActivity": "2026-06-10T05:00:00.000Z",
         "lastActivity": "2026-06-10T06:30:00.000Z",
         "modelBreakdowns": [{
@@ -76,15 +76,23 @@ def test_session_is_the_default_granularity():
     assert ship._build_batch([_session_row()], HOST, "claude") != []
 
 
-def test_session_trace_id_project_tag_and_timestamps():
+def test_session_maps_to_native_langfuse_fields():
     batch = ship._build_batch([_session_row()], HOST, "claude")
     traces, gens = _split(batch)
     body = traces[0]["body"]
     assert body["id"] == "ccusage-test-host-claude-sess-abc-123"
     assert body["timestamp"] == "2026-06-10T05:00:00.000Z"  # firstActivity
-    assert body["tags"] == [HOST, "claude", "project:D--source-foo"]
+    # host -> userId, session -> sessionId, source -> name (all native fields)
+    assert body["userId"] == HOST
+    assert body["sessionId"] == "abc-123"
+    assert body["name"] == "ccusage:claude"
+    # the only tag is the machine-independent project basename; host/source are
+    # NOT tags anymore
+    assert body["tags"] == ["project:whisper-dictate"]
+    assert HOST not in body["tags"] and "claude" not in body["tags"]
+    # full path kept in metadata for disambiguation
+    assert body["metadata"]["project"] == "D--source-whisper-dictate"
     assert body["metadata"]["sessionId"] == "abc-123"
-    assert body["metadata"]["project"] == "D--source-foo"
     g = gens[0]["body"]
     assert g["id"] == "ccusage-test-host-claude-sess-abc-123-gen-claude-opus-4-8"
     assert g["startTime"] == "2026-06-10T05:00:00.000Z"
@@ -100,13 +108,26 @@ def test_session_without_id_is_skipped():
 
 # --- daily -----------------------------------------------------------------
 
-def test_daily_trace_id_and_slim_tags():
+def test_daily_trace_id_userid_and_no_tags():
     batch = ship._build_batch([_daily_row()], HOST, "claude", "daily")
     traces, _ = _split(batch)
     body = traces[0]["body"]
     assert body["id"] == "ccusage-test-host-claude-2026-06-10"
-    assert body["tags"] == [HOST, "claude"]
-    assert not any(str(t).startswith("date:") for t in body["tags"])
+    assert body["userId"] == HOST          # host is a userId, not a tag
+    assert body["tags"] == []              # daily has no project, no tags
+    assert "sessionId" not in body         # daily isn't a session
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("D--source-whisper-dictate", "whisper-dictate"),
+    ("-home-lars-source-homelab", "homelab"),          # same project, WSL2
+    ("-home-lars-source-flux-home", "flux-home"),       # hyphen in name kept
+    ("-home-lars-source-homelab/abc/subagents", "homelab"),  # subagent path
+    ("C--Users-larsm", "C--Users-larsm"),               # no `source` -> raw
+    (None, None),
+])
+def test_project_label_unifies_across_machines(path, expected):
+    assert ship._project_label(path) == expected
 
 
 def test_daily_generation_usagedetails_no_costdetails():
