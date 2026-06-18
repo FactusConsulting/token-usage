@@ -27,8 +27,9 @@ Env vars:
     CCUSAGE_SOURCES        comma-separated list, e.g.
                            "claude,codex,copilot,gemini" (required)
     CCUSAGE_SINCE_DAYS     how many days of history to (re-)ship per run.
-                           Default 7 — covers DST / cron skips without
-                           ballooning request volume.
+                           Default 14 — wide enough that a machine offline for
+                           a week or two backfills the gap on its next run,
+                           without ballooning request volume (upserts dedupe).
     TOKEN_USAGE_HOSTNAME   override the hostname used as the trace
                            grouping key (default: socket.gethostname()).
     TOKEN_USAGE_DRY_RUN    if set to "1", print what would be POSTed
@@ -298,9 +299,9 @@ def main(argv: list[str] | None = None) -> int:
             since_days = args.since_days
         else:
             try:
-                since_days = int(os.environ.get("CCUSAGE_SINCE_DAYS", "7"))
+                since_days = int(os.environ.get("CCUSAGE_SINCE_DAYS", "14"))
             except ValueError:
-                since_days = 7
+                since_days = 14
         since = (datetime.now(timezone.utc) - timedelta(days=since_days)
                  ).date().isoformat()
 
