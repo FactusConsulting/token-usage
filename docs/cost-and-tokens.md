@@ -103,8 +103,8 @@ WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`
 
 ## Backfilling history
 
-`CCUSAGE_SINCE_DAYS` controls how many days back a run ships (default 7 for the
-hourly timer). For a one-off backfill set it on the command line, e.g.
-`CCUSAGE_SINCE_DAYS=300 token-usage`. ccusage only has whatever history is in the
-machine's local logs, so a wide window just ships everything available; missing
-days simply ship `0`. Re-running is safe (idempotent, see above).
+`CCUSAGE_SINCE_DAYS` controls how many days back each run ships (default 14).
+For a one-off backfill use the flag: `token-usage --since-days 300` (or
+`--since 2026-01-01`). ccusage only has whatever history is in the machine's
+local logs, so a wide window just ships everything available; missing days
+simply ship `0`. Re-running is safe (idempotent, see above).
