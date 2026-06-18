@@ -52,6 +52,7 @@ import argparse
 import functools
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -145,6 +146,22 @@ def _ccusage_rows(source: str, since: str,
     return list(payload.get(key) or [])
 
 
+def _project_label(project_path: str | None) -> str | None:
+    """Turn ccusage's encoded project path into a short, machine-independent
+    tag. ccusage reports the path the way Claude Code encodes it on disk
+    (separators collapsed to `-`), e.g. "D--source-whisper-dictate" =
+    D:\\source\\whisper-dictate and "-home-lars-source-homelab" =
+    /home/lars/source/homelab. We keep the segment after a `source` parent —
+    so the same project under ~/source unifies across Windows and WSL2
+    (`whisper-dictate`, `homelab`, ...) — and fall back to the raw path for
+    anything not under a `source` dir. The full path stays in metadata.
+    """
+    if not project_path:
+        return None
+    m = re.search(r"source[-/]([^/]+)", project_path)
+    return m.group(1) if m else project_path
+
+
 def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
                  granularity: str = "session") -> list[dict[str, Any]]:
     """Map ccusage rows to a Langfuse ingestion batch.
@@ -168,6 +185,7 @@ def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
     events: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
     for row in rows:
+        session_id: str | None = None
         if granularity == "daily":
             date = row.get("date")
             if not date:
@@ -175,38 +193,43 @@ def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
             trace_id = f"ccusage-{host}-{source}-{date}"
             trace_ts = start = f"{date}T00:00:00Z"
             end = f"{date}T23:59:59Z"
-            # Only host + source as tags — the date is already in the trace
-            # timestamp and metadata, so a per-day tag would just flood the tag
-            # picker with hundreds of `date:...` entries.
             metadata = {"host": host, "source": source, "date": date}
-            tags = [host, source]
+            tags: list[str] = []
         else:  # session
             sid = row.get("sessionId")
             if not sid:
                 continue
+            session_id = sid
             trace_id = f"ccusage-{host}-{source}-sess-{sid}"
             start = row.get("firstActivity") or now_iso
             end = row.get("lastActivity") or start
             trace_ts = start
             project = row.get("projectPath")
+            label = _project_label(project)
             metadata = {"host": host, "source": source, "sessionId": sid,
                         "project": project,
                         "firstActivity": start, "lastActivity": end}
-            # Tag the project so it's filterable; the sessionId would just flood
-            # the tag picker, so it stays in metadata only.
-            tags = [host, source] + ([f"project:{project}"] if project else [])
+            # host -> userId, source -> trace name, so the ONLY tag is the
+            # project (a machine-independent label). Keeps the tag picker clean.
+            tags = [f"project:{label}"] if label else []
 
+        # Map our dimensions onto Langfuse's first-class fields: host -> userId
+        # (Users view), source -> name, session -> sessionId (Sessions view).
+        trace_body: dict[str, Any] = {
+            "id": trace_id,
+            "name": f"ccusage:{source}",
+            "timestamp": trace_ts,
+            "userId": host,
+            "metadata": metadata,
+            "tags": tags,
+        }
+        if session_id:
+            trace_body["sessionId"] = session_id
         events.append({
             "id": f"{trace_id}-trace-{int(time.time() * 1000)}",
             "type": "trace-create",
             "timestamp": now_iso,
-            "body": {
-                "id": trace_id,
-                "name": f"ccusage:{source}",
-                "timestamp": trace_ts,
-                "metadata": metadata,
-                "tags": tags,
-            },
+            "body": trace_body,
         })
 
         breakdowns = row.get("modelBreakdowns") or []
@@ -282,12 +305,24 @@ def _ship(host_url: str, pk: str, sk: str,
     # the deterministic ids mean a retried/overlapping chunk just upserts.
     for i in range(0, len(batch), 100):
         chunk = batch[i:i + 100]
-        resp = requests.post(
-            f"{host_url}/api/public/ingestion",
-            auth=(pk, sk),
-            json={"batch": chunk},
-            timeout=30,
-        )
+        # Retry transient network failures (the in-cluster gateway occasionally
+        # resets the connection mid-request); deterministic ids make a retried
+        # chunk a safe upsert. Give up after a few tries and let the caller mark
+        # the source failed — the next scheduled run backfills it.
+        resp = None
+        for attempt in range(4):
+            try:
+                resp = requests.post(
+                    f"{host_url}/api/public/ingestion",
+                    auth=(pk, sk),
+                    json={"batch": chunk},
+                    timeout=30,
+                )
+                break
+            except requests.RequestException:
+                if attempt == 3:
+                    raise
+                time.sleep(2 * (attempt + 1))
         if resp.status_code >= 400:
             sys.stderr.write(
                 f"[ccusage-ship] Langfuse rejected batch: "

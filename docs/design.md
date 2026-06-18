@@ -21,16 +21,21 @@ except the daily token/cost aggregates.
 ## Data model
 
 `ccusage` produces aggregates (per-day / per-session / per-5h totals — never
-per-request data). The shim maps each daily row to:
+per-request data). By default the shim maps each ccusage **session** to:
 
-- **one Langfuse trace** per `(host, source, day)` — id
-  `ccusage-<host>-<source>-<date>`, tagged with the host and source;
+- **one Langfuse trace** per session — id
+  `ccusage-<host>-<source>-sess-<sessionId>`, mapped onto Langfuse's
+  first-class fields: `userId` = host (Users view), `sessionId` = the ccusage
+  session (Sessions view), `name` = `ccusage:<source>`. The only tag is the
+  project (a machine-independent basename, so the same project unifies across
+  machines); the full project path stays in metadata.
 - **one generation per model**, carrying token counts in Langfuse v3
   `usageDetails` (input / output / cache-creation / cache-read).
 
 Cost is left to Langfuse to compute from those token counts × its dated model
 pricing. Ids are deterministic, so re-running upserts instead of duplicating.
-The full details — cache-token pricing, per-source model naming, multi-machine
+`CCUSAGE_GRANULARITY=daily` switches to one trace per calendar day instead. The
+full details — cache-token pricing, per-source model naming, multi-machine
 hostnames — are in [cost-and-tokens.md](cost-and-tokens.md).
 
 ## Why not LiteLLM or a proxy
