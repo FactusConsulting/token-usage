@@ -123,6 +123,9 @@ def test_daily_trace_id_userid_and_no_tags():
     ("-home-lars-source-homelab", "homelab"),          # same project, WSL2
     ("-home-lars-source-flux-home", "flux-home"),       # hyphen in name kept
     ("-home-lars-source-homelab/abc/subagents", "homelab"),  # subagent path
+    ("--home-lars-source-flux-home--", "flux-home"),    # leading/trailing --
+    ("--home-lars-source-voice-pi--", "voice-pi"),      # trailing slash -> --
+    ("--tmp--", "tmp"),                                  # no `source`, stripped
     ("C--Users-larsm", "C--Users-larsm"),               # no `source` -> raw
     (None, None),
 ])
