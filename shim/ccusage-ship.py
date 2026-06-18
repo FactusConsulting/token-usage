@@ -159,7 +159,11 @@ def _project_label(project_path: str | None) -> str | None:
     if not project_path:
         return None
     m = re.search(r"source[-/]([^/]+)", project_path)
-    return m.group(1) if m else project_path
+    # Strip leading/trailing separators the path encoding leaves behind (a
+    # trailing slash becomes a trailing `-`, so e.g. ".../voice-pi/" ->
+    # "voice-pi--"); internal hyphens in the name are kept.
+    label = (m.group(1) if m else project_path).strip("-")
+    return label or None
 
 
 def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
