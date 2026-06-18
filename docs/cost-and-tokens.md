@@ -3,24 +3,54 @@
 How `token-usage` maps ccusage data into Langfuse, how cost is calculated, and
 the operational details that aren't obvious from the code.
 
+## Accounting & billing model (the one principle)
+
+The design is deliberately thin: **each machine ships only raw token counts;
+Langfuse owns all cost math.** The shim never sends a dollar figure
+(`costDetails` is omitted) — it forwards `usageDetails` (input / output /
+cache-creation / cache-read tokens, per model) and lets Langfuse multiply by its
+own dated model-price table.
+
+What that means for the numbers on the dashboard:
+
+- The USD is **Langfuse's** calculation from published list prices (e.g.
+  `claude-opus-4-8` at $5 / $25 per M input/output + standard cache
+  multipliers), applied at each session's own date.
+- It is an **API-equivalent estimate, not a bill.** Claude Code / Codex run on
+  flat subscriptions, so the figure answers "what would these tokens cost at API
+  list prices" — useful for comparing machines / projects / models, not for
+  reconciling an invoice.
+- ccusage also computes a cost, ~9% higher (it adds long-context premium tiers).
+  We intentionally **ignore ccusage's number** and trust Langfuse's table, so
+  every machine prices identically and historically. Details below.
+
 ## Data model: ccusage → Langfuse
 
-For each `(source, day)` the shim emits:
+By default the shim ships at **session** granularity. For each ccusage session
+it emits:
 
-- **one trace** — id `ccusage-<host>-<source>-<date>`, name `ccusage:<source>`,
-  tags `[<host>, <source>]`.
+- **one trace** — id `ccusage-<host>-<source>-sess-<sessionId>`, mapped onto
+  Langfuse's first-class fields: `userId` = `<host>`, `sessionId` =
+  `<sessionId>`, name = `ccusage:<source>`. The only tag is
+  `project:<basename>` — a machine-independent label, so the same project
+  unifies across machines; the full path stays in `metadata`.
 - **one generation per model** — id `<trace-id>-gen-<model>`, carrying that
   model's token counts in Langfuse v3 **`usageDetails`**.
 
 `<host>` is `TOKEN_USAGE_HOSTNAME` (or `socket.gethostname()`), `<source>` is a
-ccusage source (claude, codex, …), `<model>` is the real model name.
+ccusage source (claude, codex, …), `<model>` is the real model name. Set
+`CCUSAGE_GRANULARITY=daily` for one trace per calendar day instead
+(`ccusage-<host>-<source>-<date>`, no sessionId/project).
 
-Because the trace and generation ids are **deterministic** (no timestamp in the
-id), Langfuse **upserts** on re-send. Running an import repeatedly — or the
-hourly timer overlapping the same days — never creates duplicates; it just
-refreshes the same date-keyed records. The only thing that changes an id is the
-model label, so changing how a model is named (see codex below) leaves the old
-generations orphaned until the trace is re-created.
+Because the ids are **deterministic** (no timestamp), Langfuse **upserts** on
+re-send: the hourly timer re-shipping the same sessions never duplicates, it
+just refreshes the same records.
+
+> Re-tagging caveat: Langfuse is event-sourced (every event is a blob in its
+> MinIO store) and **merges** trace tags across re-ingests of the same id.
+> Re-importing therefore cannot *remove* an old tag — changing the tag scheme
+> needs a deep wipe (empty the MinIO bucket + truncate ClickHouse) first. This
+> only bites when you change the data model, never during normal imports.
 
 ## Cost is computed by Langfuse, not ccusage
 
@@ -79,18 +109,18 @@ ccusage doesn't return `modelBreakdowns` for every source. claude does; codex
 instead names its model in a `models` dict (e.g. `{"gpt-5.5": {...}}`). The shim
 uses that real model name so Langfuse can price it — a generic label like
 `codex` or `aggregate` matches **no** model definition and shows cost `0`. The
-source is still preserved (trace name `ccusage:codex`, `codex` tag), so you can
-filter by source while the model is priced correctly as `gpt-5.5`.
+source is still preserved as the trace name (`ccusage:codex`), so you can filter
+by source while the model is priced correctly as `gpt-5.5`.
 
 ## Multiple machines
 
 Each machine should set a distinct `TOKEN_USAGE_HOSTNAME` (e.g.
-`lwa002-windows`, `lwa002-wsl2`). The hostname is the trace's host tag, so in the
-**Traces** view you can `Filters → Tags → <host>` to scope to one machine, or
-group a custom dashboard by host. Windows (Claude Code / codex) and WSL2 keep
-separate logs, so their data is genuinely distinct, not duplicated — provided
-WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`
-(check with `ccusage claude daily --json --since <date>`).
+`lwa002-windows`, `lwa002-wsl2`). The hostname becomes the trace's **`userId`**,
+so the **Users** view breaks spend down per machine and any panel can group by
+user. Windows (Claude Code / codex) and WSL2 keep separate logs, so their data
+is genuinely distinct, not duplicated — provided WSL2's ccusage reads its own
+`~/.claude`, not the Windows logs via `/mnt/c` (check with
+`ccusage claude session --json --since <date>`).
 
 ## Dashboard tips
 

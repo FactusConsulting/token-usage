@@ -2,7 +2,7 @@
 
 Cross-machine LLM token-usage tracking. Each machine runs [`ccusage`](https://ccusage.com/)
 locally to read its own Claude Code / Codex / Copilot / Gemini session files,
-then ships the daily aggregates to a self-hosted **Langfuse** so you see total
+then ships per-session aggregates to a self-hosted **Langfuse** so you see total
 spend across every machine in one dashboard.
 
 ## Install
