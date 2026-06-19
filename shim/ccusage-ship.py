@@ -27,7 +27,7 @@ Env vars:
     LANGFUSE_PUBLIC_KEY    pk-lf-...                     (required)
     LANGFUSE_SECRET_KEY    sk-lf-...                     (required)
     CCUSAGE_SOURCES        comma-separated list, e.g.
-                           "claude,codex,copilot,gemini" (required)
+                           "claude,codex,openclaw,copilot,gemini" (required)
     CCUSAGE_SINCE_DAYS     how many days of history to (re-)ship per run.
                            Default 14 — wide enough that a machine offline for
                            a week or two backfills the gap on its next run,

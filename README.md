@@ -1,7 +1,7 @@
 # token-usage
 
 Cross-machine LLM token-usage tracking. Each machine runs [`ccusage`](https://ccusage.com/)
-locally to read its own Claude Code / Codex / Copilot / Gemini session files,
+locally to read its own Claude Code / Codex / Copilot / Gemini / OpenClaw session files,
 then ships per-session aggregates to a self-hosted **Langfuse** so you see total
 spend across every machine in one dashboard.
 
@@ -36,7 +36,7 @@ the package):
 LANGFUSE_HOST=https://langfuse.lwa.dk
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-CCUSAGE_SOURCES=claude,codex
+CCUSAGE_SOURCES=claude,codex,openclaw
 ```
 
 Check it, then backfill history if you want:
