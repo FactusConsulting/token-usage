@@ -100,7 +100,10 @@ $wrapper = Join-Path $installDir 'run-ship.cmd'
 @echo off
 setlocal
 set TOKEN_USAGE_DIR=%LOCALAPPDATA%\token-usage
-"%TOKEN_USAGE_DIR%\.venv\Scripts\python.exe" "%TOKEN_USAGE_DIR%\ccusage-ship.py" >> "%TOKEN_USAGE_DIR%\ship.log" 2>&1
+set LOG=%TOKEN_USAGE_DIR%\ship.log
+rem Rotate so the log can't grow without bound: keep one previous (~1 MB each).
+if exist "%LOG%" for %%F in ("%LOG%") do if %%~zF GTR 1048576 move /Y "%LOG%" "%LOG%.1" >nul
+"%TOKEN_USAGE_DIR%\.venv\Scripts\python.exe" "%TOKEN_USAGE_DIR%\ccusage-ship.py" >> "%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 "@ | Set-Content -Path $wrapper -Encoding ASCII
 
