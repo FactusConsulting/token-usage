@@ -71,7 +71,7 @@ Put config in the durable `~/.config` path so it survives `brew upgrade`.
 LANGFUSE_HOST=https://langfuse.lwa.dk
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-CCUSAGE_SOURCES=claude,codex            # trim to what this machine actually runs
+CCUSAGE_SOURCES=claude,codex,openclaw  # trim to what this machine actually runs
 
 # Optional
 CCUSAGE_SINCE_DAYS=14                   # how many days back each run ships (default 14)
@@ -120,6 +120,6 @@ WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`.
 
 ## Tuning `CCUSAGE_SOURCES`
 
-Default is `claude,codex,pi,copilot,gemini`. Trim per machine to the sources you
+Default is `claude,codex,openclaw,pi,copilot,gemini`. Trim per machine to the sources you
 actually use — including ones that generate zero local data just adds empty
 runs. See the [ccusage docs](https://ccusage.com/) for the full source list.
