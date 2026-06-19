@@ -114,8 +114,8 @@ filesystem, so to capture both, install on **both**:
 
 Set a distinct `TOKEN_USAGE_HOSTNAME` on the WSL2 side — by default WSL shares
 the Windows hostname, and Langfuse would merge the two sets of traces. The
-hostname becomes the trace's host tag, so you can filter/group per machine in
-the UI. The two sides are genuinely separate usage, not duplicates — confirm
+hostname becomes the trace's `userId`, so you can break spend down per machine
+in the Users view. The two sides are genuinely separate usage, not duplicates — confirm
 WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`.
 
 ## Tuning `CCUSAGE_SOURCES`
@@ -123,3 +123,29 @@ WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`.
 Default is `claude,codex,openclaw,pi,copilot,gemini`. Trim per machine to the sources you
 actually use — including ones that generate zero local data just adds empty
 runs. See the [ccusage docs](https://ccusage.com/) for the full source list.
+
+## Monitoring — know when shipping breaks
+
+Each run logs to a rolling local file and exits non-zero on failure (`1` config
+error, `2` one or more sources failed). Look there first:
+
+| Where | Log | Last-run result |
+| :--- | :--- | :--- |
+| Windows | `%LOCALAPPDATA%\token-usage\ship.log` (rotates at ~1 MB) | `(Get-ScheduledTaskInfo TokenUsageCcusageShip).LastTaskResult` — `0` is success |
+| WSL2 / systemd | `journalctl --user -u homebrew.token-usage.service` | `systemctl --user status homebrew.token-usage.service` |
+
+Those are **passive** — they won't tell you the timer stopped firing, the
+machine was offline for days, or Langfuse has been down. For active alerting set
+**`HEARTBEAT_URL`** to a dead-man's-switch monitor (Uptime Kuma push monitor,
+self-hosted healthchecks.io, …). The shim GETs it **only after a fully
+successful run**, so any failure — including the run never happening — stops the
+ping and trips the alert. Use **one URL per machine** so you know which one went
+quiet:
+
+```ini
+HEARTBEAT_URL=https://hc.example.com/ping/your-uuid
+```
+
+Set the monitor's expected period to the run interval (1 h) plus a grace window.
+Because a *missing* ping is the alert, this is the one signal that covers every
+failure mode — prefer it over watching the logs by hand.

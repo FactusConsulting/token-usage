@@ -174,5 +174,26 @@ def test_daily_rows_without_date_are_skipped():
     assert ship._build_batch([{"inputTokens": 1}], HOST, "claude", "daily") == []
 
 
+def test_heartbeat_pings_url_and_swallows_errors(monkeypatch):
+    # success ping hits exactly the configured URL
+    calls = []
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(ship.requests, "get",
+                        lambda url, timeout=None: calls.append(url) or _Resp())
+    ship._ping_heartbeat("https://hc.example/abc")
+    assert calls == ["https://hc.example/abc"]
+
+    # a broken monitor must never propagate out of the run
+    def _boom(*a, **k):
+        raise ship.requests.RequestException("monitor down")
+
+    monkeypatch.setattr(ship.requests, "get", _boom)
+    ship._ping_heartbeat("https://hc.example/abc")  # must not raise
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

@@ -37,6 +37,12 @@ Env vars:
                            daily groups one trace per calendar day.
     TOKEN_USAGE_HOSTNAME   override the hostname used as the trace
                            grouping key (default: socket.gethostname()).
+    HEARTBEAT_URL          optional dead-man's-switch monitor URL (Uptime
+                           Kuma push, healthchecks.io, …), pinged with a GET
+                           on a fully successful run only. A missing ping —
+                           timer never fired, ccusage broke, Langfuse
+                           unreachable — trips the monitor's alert. Use one
+                           URL per machine; the ping never fails the run.
     TOKEN_USAGE_DRY_RUN    if set to "1", print what would be POSTed
                            instead of sending. Useful for first-time
                            validation.
@@ -374,6 +380,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _ping_heartbeat(url: str) -> None:
+    """Best-effort success ping to a dead-man's-switch monitor (Uptime Kuma
+    push, healthchecks.io, …). Called only after a fully successful run, so a
+    missing ping — the timer never fired, ccusage broke, or Langfuse was
+    unreachable — is what trips the monitor's alert. Never fails the run: a
+    heartbeat that can't be reached is logged and swallowed."""
+    try:
+        requests.get(url, timeout=10).raise_for_status()
+    except requests.RequestException as exc:
+        sys.stderr.write(f"[ccusage-ship] heartbeat ping failed: {exc}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     _load_dotenv_best_effort()
@@ -424,6 +442,12 @@ def main(argv: list[str] | None = None) -> int:
             f"[ccusage-ship] {source}: shipped {len(rows)} {unit}(s), "
             f"{len(batch)} event(s)\n")
 
+    # Heartbeat only on a fully clean run, so the monitor alerts on any failure
+    # (including the timer not firing at all). Skipped in dry-run.
+    if not failures:
+        heartbeat = os.environ.get("HEARTBEAT_URL")
+        if heartbeat and os.environ.get("TOKEN_USAGE_DRY_RUN") != "1":
+            _ping_heartbeat(heartbeat)
     return 2 if failures else 0
 
 
