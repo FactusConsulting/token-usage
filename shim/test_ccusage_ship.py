@@ -174,6 +174,16 @@ def test_daily_rows_without_date_are_skipped():
     assert ship._build_batch([{"inputTokens": 1}], HOST, "claude", "daily") == []
 
 
+def test_ccusage_subprocess_is_windowless_on_windows():
+    # ccusage spawns under pythonw for the silent Scheduled Task; on Windows the
+    # subprocess must carry CREATE_NO_WINDOW, and be a harmless 0 elsewhere.
+    import sys
+    if sys.platform == "win32":
+        assert ship._NO_WINDOW == ship.subprocess.CREATE_NO_WINDOW
+    else:
+        assert ship._NO_WINDOW == 0
+
+
 def test_heartbeat_pings_url_and_swallows_errors(monkeypatch):
     # success ping hits exactly the configured URL
     calls = []

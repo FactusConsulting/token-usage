@@ -122,6 +122,14 @@ def _require_env() -> tuple[str, str, str, list[str]]:
     return host, pk, sk, sources
 
 
+# ccusage is a Node script. When the shim is launched from a GUI-subsystem
+# host (pythonw.exe, used by the Windows Scheduled Task so nothing flashes on
+# screen), spawning a console child would pop a console window every run.
+# CREATE_NO_WINDOW suppresses it. The flag is Windows-only; 0 is a no-op
+# default everywhere else, so the call site can pass it unconditionally.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 @functools.lru_cache(maxsize=1)
 def _ccusage_exe() -> str:
     """Resolve the ccusage executable. On Windows `npm -g` installs
@@ -146,6 +154,7 @@ def _ccusage_rows(source: str, since: str,
     out = subprocess.check_output(
         [_ccusage_exe(), source, granularity, "--json", "--since", since],
         text=True,
+        creationflags=_NO_WINDOW,
     )
     payload = json.loads(out)
     key = "sessions" if granularity == "session" else "daily"
