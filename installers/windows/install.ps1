@@ -11,7 +11,8 @@
       * Python deps installed into a venv at %LOCALAPPDATA%\token-usage\.venv
       * .env created with placeholder values if missing (user fills it in)
       * Scheduled Task "TokenUsageCcusageShip" running hourly as the current
-        user, even when the user is not logged in
+        user (Interactive logon), launched via pythonw so no console window
+        flashes on each run
 
     After install, edit %LOCALAPPDATA%\token-usage\.env and fill in the real
     LANGFUSE_* keys.
@@ -91,34 +92,60 @@ if (-not (Test-Path (Join-Path $venvDir 'Scripts\python.exe'))) {
     & $pyLauncher.Source -3 -m venv $venvDir
 }
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
+$venvPythonw = Join-Path $venvDir 'Scripts\pythonw.exe'
 & $venvPython -m pip install --upgrade pip | Out-Host
 & $venvPython -m pip install -r $reqFile | Out-Host
 
-# 5. Wrapper batch file that loads the venv, runs the shim, captures output.
-$wrapper = Join-Path $installDir 'run-ship.cmd'
-@"
-@echo off
-setlocal
-set TOKEN_USAGE_DIR=%LOCALAPPDATA%\token-usage
-set LOG=%TOKEN_USAGE_DIR%\ship.log
-rem Rotate so the log can't grow without bound: keep one previous (~1 MB each).
-if exist "%LOG%" for %%F in ("%LOG%") do if %%~zF GTR 1048576 move /Y "%LOG%" "%LOG%.1" >nul
-"%TOKEN_USAGE_DIR%\.venv\Scripts\python.exe" "%TOKEN_USAGE_DIR%\ccusage-ship.py" >> "%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-"@ | Set-Content -Path $wrapper -Encoding ASCII
+# 5. Windowless launcher. A .pyw run by the venv's pythonw.exe leaves no console
+# window when the Scheduled Task fires (a .cmd or python.exe would flash one
+# every hour under Interactive logon). It rotates ship.log and captures the
+# shim's output; the shim itself spawns ccusage with CREATE_NO_WINDOW, so the
+# whole chain is silent.
+$wrapper = Join-Path $installDir 'run-ship.pyw'
+@'
+"""Windowless launcher for the hourly Scheduled Task.
 
-# 6. Scheduled Task - hourly, runs even when user is logged out (S4U logon).
+Run by pythonw.exe so no console window appears. Rotates ship.log (keep one
+~1 MB previous), then runs the shim with its stdout/stderr captured into the
+log. The shim spawns ccusage with CREATE_NO_WINDOW, keeping the chain silent.
+"""
+import os
+import subprocess
+
+base = os.path.join(os.environ["LOCALAPPDATA"], "token-usage")
+log = os.path.join(base, "ship.log")
+if os.path.exists(log) and os.path.getsize(log) > 1_048_576:
+    os.replace(log, log + ".1")
+with open(log, "ab") as fh:
+    subprocess.run(
+        [os.path.join(base, ".venv", "Scripts", "pythonw.exe"),
+         os.path.join(base, "ccusage-ship.py")],
+        stdout=fh, stderr=fh, check=False,
+    )
+'@ | Set-Content -Path $wrapper -Encoding UTF8
+
+# A stale run-ship.cmd from an older install would still work, but the task no
+# longer points at it; drop it so there is one obvious entry point.
+$staleCmd = Join-Path $installDir 'run-ship.cmd'
+if (Test-Path $staleCmd) { Remove-Item -Force $staleCmd }
+
+# 6. Scheduled Task - hourly, Interactive logon. S4U ("run whether logged on or
+# not") silently never starts for a standard (non-admin) user, so the task
+# would register yet never ship. Interactive runs reliably while the user is
+# logged in; pythonw keeps it silent. RepetitionDuration must be set explicitly
+# or the hourly repetition is treated as already expired and never fires.
 $taskName = 'TokenUsageCcusageShip'
-$action = New-ScheduledTaskAction -Execute $wrapper
+$action = New-ScheduledTaskAction -Execute $venvPythonw -Argument "`"$wrapper`""
 $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(2)) `
-            -RepetitionInterval (New-TimeSpan -Hours 1)
+            -RepetitionInterval (New-TimeSpan -Hours 1) `
+            -RepetitionDuration (New-TimeSpan -Days 3650)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
-                -LogonType S4U -RunLevel Limited
+                -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
                 -DontStopIfGoingOnBatteries -StartWhenAvailable
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Force | Out-Null
 
-Write-Host "[install] Scheduled Task '$taskName' registered (hourly)."
+Write-Host "[install] Scheduled Task '$taskName' registered (hourly, silent)."
 Write-Host "[install] Done. Edit $envTarget then either wait an hour or run:"
 Write-Host "         Start-ScheduledTask -TaskName $taskName"
