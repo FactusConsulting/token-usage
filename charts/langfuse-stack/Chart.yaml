@@ -1,0 +1,31 @@
+apiVersion: v2
+name: langfuse-stack
+description: >-
+  Langfuse wrapped so that no persistent state is owned by the chart. Adds the
+  operator-managed ClickHouse cluster that Langfuse v4 requires, plus render-time
+  guards that refuse configurations known to lose or corrupt data.
+type: application
+
+# Chart version — bump on any change in this directory.
+version: 0.1.0
+
+# Mirrors the pinned upstream appVersion below. Override
+# langfuse.langfuse.image.tag to run a different Langfuse release.
+appVersion: "3.224.1"
+
+keywords:
+  - langfuse
+  - observability
+home: https://github.com/FactusConsulting/token-usage
+sources:
+  - https://github.com/FactusConsulting/token-usage
+  - https://github.com/langfuse/langfuse-k8s
+
+dependencies:
+  # The official chart, unmodified. We add values, extra manifests and guards
+  # on top rather than vendoring templates — a fork would have to be re-merged
+  # on every Langfuse release, which is exactly how the price table fell five
+  # weeks behind in the first place.
+  - name: langfuse
+    version: "1.5.41"
+    repository: https://langfuse.github.io/langfuse-k8s

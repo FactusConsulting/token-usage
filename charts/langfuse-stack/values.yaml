@@ -1,0 +1,101 @@
+# Defaults for langfuse-stack.
+#
+# Everything under `langfuse:` is passed straight to the upstream chart. Note
+# the double nesting: `langfuse.langfuse.*` is upstream's own top-level
+# `langfuse:` key, while `langfuse.clickhouse.*` etc. are its sub-chart
+# toggles.
+
+# ---------------------------------------------------------------------------
+# Render-time guards. These fail `helm template`/`upgrade` rather than letting
+# a known-bad configuration reach the cluster.
+# ---------------------------------------------------------------------------
+guards:
+  # Langfuse v4 does not work with the ClickHouse bundled in the upstream
+  # chart — upstream's own v4 example runs ClickHouse via the operator. This
+  # combination silently produces a broken install, so it is refused.
+  blockV4WithBundledClickHouse: true
+
+  # Refuse to render if any stateful component is still owned by the chart.
+  # Left off during the migration; turn on once Postgres, ClickHouse and object
+  # storage are all external, to keep it that way.
+  requireExternalState: false
+
+# ---------------------------------------------------------------------------
+# Operator-managed ClickHouse (clickhouse.com/v1alpha1). Requires the ClickHouse
+# Kubernetes Operator and cert-manager to be installed in the cluster.
+# Modelled on langfuse-k8s/examples/v4-installation.
+# ---------------------------------------------------------------------------
+clickhouseCluster:
+  enabled: false
+  name: langfuse
+
+  # Password shared between the operator-managed cluster and the Langfuse
+  # chart. Create it out of band; never templated into the release.
+  authSecret:
+    name: langfuse-clickhouse-auth
+    key: password
+
+  keeper:
+    replicas: 3 # must be odd
+    image:
+      repository: clickhouse/clickhouse-keeper
+      tag: "26.4"
+    storage: 10Gi
+    storageClassName: ""
+
+  server:
+    replicas: 1 # 3 recommended for production; 1 is fine for a single-node homelab
+    shards: 1 # fixed — Langfuse does not support sharding
+    image:
+      repository: clickhouse/clickhouse-server
+      tag: "26.4"
+    storage: 100Gi
+    storageClassName: ""
+
+# ---------------------------------------------------------------------------
+# Pre-upgrade guard: refuse to upgrade unless a recent CNPG backup completed.
+#
+# Off by default because it needs an image carrying both a shell and kubectl
+# (the distroless registry.k8s.io/kubectl image has no shell). Turn it on in
+# environments where the CNPG cluster is backed up.
+# ---------------------------------------------------------------------------
+preUpgradeBackupCheck:
+  enabled: false
+  cnpgClusterName: langfuse-db
+  maxAgeHours: 26 # a daily schedule plus two hours of slack
+  image: alpine/k8s:1.36.1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# Applied to every resource this chart owns (not to the sub-chart's).
+commonLabels: {}
+
+# ---------------------------------------------------------------------------
+# Upstream chart values. Only the state-related toggles are opinionated here;
+# everything else (resources, hostnames, secrets) belongs in the deploying
+# repository's values.
+# ---------------------------------------------------------------------------
+langfuse:
+  langfuse:
+    image:
+      # Pin explicitly. "4" or "latest" would make the running version
+      # unreproducible and is rejected by the cluster's admission policy.
+      tag: "3.224.1"
+
+  # State lives outside the chart. Each of these must be pointed at an
+  # external instance by the deploying repository.
+  postgresql:
+    deploy: false
+  clickhouse:
+    deploy: false
+  s3:
+    deploy: false
+
+  # Redis/Valkey is a cache — losing it costs a warm-up, not data — so the
+  # chart may own it.
+  redis:
+    deploy: true

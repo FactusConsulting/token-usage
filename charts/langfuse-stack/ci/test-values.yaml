@@ -1,0 +1,37 @@
+# Minimum non-secret values that satisfy the upstream chart's required-field
+# checks, so `helm template` / `helm lint` can exercise this chart's guards in
+# CI. Secrets (encryption key, salt, passwords) are generated at run time by
+# ci/render.sh and deliberately not committed here.
+#
+# Not a deployment example — the real values live in the deploying repository.
+langfuse:
+  postgresql:
+    deploy: false
+    host: postgres.example
+    auth:
+      username: langfuse
+      database: langfuse
+
+  clickhouse:
+    deploy: false
+    host: clickhouse.example
+    auth:
+      username: default
+
+  redis:
+    deploy: true
+
+  s3:
+    deploy: false
+    bucket: langfuse
+    region: us-east-1
+    endpoint: https://s3.example
+    forcePathStyle: true
+    auth:
+      accessKeyId: render-test
+    eventUpload:
+      bucket: langfuse
+    batchExport:
+      bucket: langfuse
+    mediaUpload:
+      bucket: langfuse

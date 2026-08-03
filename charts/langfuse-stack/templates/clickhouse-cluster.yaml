@@ -1,0 +1,63 @@
+{{- if .Values.clickhouseCluster.enabled }}
+{{- $cc := .Values.clickhouseCluster }}
+# Operator-managed ClickHouse. Deliberately NOT a sub-chart: the operator owns
+# the StatefulSets and PVCs, so uninstalling or re-templating this Helm release
+# does not delete the data. Shape follows
+# langfuse-k8s/examples/v4-installation/clickhouse-cluster.yaml.
+apiVersion: clickhouse.com/v1alpha1
+kind: KeeperCluster
+metadata:
+  name: {{ $cc.name }}
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+  annotations:
+    # Survive a `helm uninstall` — this holds coordination state for the data
+    # below, and losing it out of step with ClickHouse is worse than orphaning it.
+    helm.sh/resource-policy: keep
+spec:
+  replicas: {{ $cc.keeper.replicas }}
+  containerTemplate:
+    image:
+      repository: {{ $cc.keeper.image.repository }}
+      tag: {{ $cc.keeper.image.tag | quote }}
+  dataVolumeClaimSpec:
+    {{- with $cc.keeper.storageClassName }}
+    storageClassName: {{ . }}
+    {{- end }}
+    resources:
+      requests:
+        storage: {{ $cc.keeper.storage }}
+---
+apiVersion: clickhouse.com/v1alpha1
+kind: ClickHouseCluster
+metadata:
+  name: {{ $cc.name }}
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+  annotations:
+    # The trace/observation store. Never delete this with the release.
+    helm.sh/resource-policy: keep
+spec:
+  replicas: {{ $cc.server.replicas }}
+  shards: {{ $cc.server.shards }}
+  keeperClusterRef:
+    name: {{ $cc.name }}
+  containerTemplate:
+    image:
+      repository: {{ $cc.server.image.repository }}
+      tag: {{ $cc.server.image.tag | quote }}
+  dataVolumeClaimSpec:
+    {{- with $cc.server.storageClassName }}
+    storageClassName: {{ . }}
+    {{- end }}
+    resources:
+      requests:
+        storage: {{ $cc.server.storage }}
+  settings:
+    defaultUserPassword:
+      secret:
+        name: {{ $cc.authSecret.name }}
+        key: {{ $cc.authSecret.key }}
+{{- end }}

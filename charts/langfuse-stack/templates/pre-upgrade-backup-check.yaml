@@ -1,0 +1,123 @@
+{{- if .Values.preUpgradeBackupCheck.enabled }}
+{{- $c := .Values.preUpgradeBackupCheck }}
+# Refuses the upgrade unless a CNPG backup completed recently. Helm aborts the
+# release if a pre-upgrade hook fails, so a stale or broken backup chain stops
+# the upgrade instead of being discovered afterwards.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "langfuse-stack.fullname" . }}-backup-check
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-check
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "langfuse-stack.fullname" . }}-backup-check
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-check
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["backups"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "langfuse-stack.fullname" . }}-backup-check
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-check
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "langfuse-stack.fullname" . }}-backup-check
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "langfuse-stack.fullname" . }}-backup-check
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "langfuse-stack.fullname" . }}-backup-check
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-check
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-5"
+    # Kept after a run so a failed check can be inspected; replaced on the
+    # next upgrade.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "langfuse-stack.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backup-check
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "langfuse-stack.fullname" . }}-backup-check
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: check
+          image: {{ $c.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              CLUSTER="{{ $c.cnpgClusterName }}"
+              MAX_AGE_HOURS={{ $c.maxAgeHours }}
+
+              echo "Checking for a completed backup of CNPG cluster '$CLUSTER' in the last ${MAX_AGE_HOURS}h..."
+
+              LATEST=$(kubectl get backups.postgresql.cnpg.io \
+                -n {{ .Release.Namespace }} \
+                -o jsonpath="{range .items[?(@.spec.cluster.name=='${CLUSTER}')]}{.status.phase} {.status.stoppedAt}{'\n'}{end}" \
+                | grep '^completed ' | awk '{print $2}' | sort | tail -1)
+
+              if [ -z "$LATEST" ]; then
+                echo "REFUSING UPGRADE: no completed backup found for cluster '$CLUSTER'."
+                echo "Postgres holds the model-price definitions, which nothing else can reconstruct."
+                exit 1
+              fi
+
+              LATEST_TS=$(date -u -d "$LATEST" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST" +%s)
+              NOW=$(date -u +%s)
+              AGE_HOURS=$(( (NOW - LATEST_TS) / 3600 ))
+
+              echo "Most recent completed backup: $LATEST (${AGE_HOURS}h ago)"
+              if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
+                echo "REFUSING UPGRADE: newest backup is ${AGE_HOURS}h old, limit is ${MAX_AGE_HOURS}h."
+                exit 1
+              fi
+              echo "Backup is fresh enough — proceeding with the upgrade."
+{{- end }}

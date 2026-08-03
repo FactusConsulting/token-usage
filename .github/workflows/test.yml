@@ -15,6 +15,68 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install --quiet pytest requests python-dotenv
+        # Pinned and wheel-only: unpinned installs resolve to whatever is
+        # newest at run time, and a source distribution executes setup code
+        # during install.
+        run: |
+          pip install --quiet --only-binary :all: \
+            pytest==9.1.1 \
+            requests==2.34.2 \
+            python-dotenv==1.2.2
       - name: Run tests
         run: python -m pytest shim/ -v
+
+  chart:
+    name: langfuse-stack chart (lint + guards)
+    runs-on: ubuntu-latest
+    env:
+      CHART: charts/langfuse-stack
+      VALUES: charts/langfuse-stack/ci/test-values.yaml
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to a commit SHA: a mutable tag on a third-party action can be
+      # repointed at arbitrary code after review.
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with:
+          version: v3.19.0
+      - name: Resolve dependencies
+        # `helm dependency build` resolves Chart.lock against the local repo
+        # list, so the upstream repo has to be registered first even though
+        # Chart.yaml names its URL.
+        run: |
+          helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+          helm repo update
+          helm dependency build "$CHART"
+      - name: Lint
+        run: $CHART/ci/render.sh lint
+      - name: Renders with external state
+        run: $CHART/ci/render.sh > /dev/null
+      - name: Guard rejects v4 on the bundled ClickHouse
+        run: |
+          if $CHART/ci/render.sh \
+               --set langfuse.clickhouse.deploy=true \
+               --set langfuse.langfuse.image.tag=4.0.0 > /dev/null 2>&1; then
+            echo "guard did not fire: v4 + bundled ClickHouse rendered successfully"
+            exit 1
+          fi
+      - name: Guard rejects chart-owned state when required external
+        run: |
+          if $CHART/ci/render.sh \
+               --set guards.requireExternalState=true \
+               --set langfuse.clickhouse.deploy=true > /dev/null 2>&1; then
+            echo "guard did not fire: chart-owned ClickHouse rendered successfully"
+            exit 1
+          fi
+      - name: Guard rejects the latest tag
+        run: |
+          if $CHART/ci/render.sh \
+               --set langfuse.langfuse.image.tag=latest > /dev/null 2>&1; then
+            echo "guard did not fire: tag 'latest' rendered successfully"
+            exit 1
+          fi
+      - name: v4 with operator-managed ClickHouse renders
+        run: |
+          $CHART/ci/render.sh \
+            --set langfuse.langfuse.image.tag=4.0.0 \
+            --set clickhouseCluster.enabled=true \
+            | grep -q '^kind: ClickHouseCluster'
