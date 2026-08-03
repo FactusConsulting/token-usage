@@ -1,0 +1,8 @@
+.DS_Store
+.git/
+.gitignore
+*.tmproj
+.vscode/
+# NOTE: do not ignore charts/*.tgz — Helm resolves the packaged dependency
+# from there, and ignoring it makes every render fail with
+# "found in Chart.yaml, but missing in charts/ directory".

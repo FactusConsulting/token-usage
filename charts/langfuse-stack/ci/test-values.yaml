@@ -1,0 +1,48 @@
+# Minimum values that satisfy the upstream chart's required-field checks, so
+# `helm template` / `helm lint` can exercise this chart's guards in CI.
+# Not a deployment example — the real values live in the deploying repository.
+langfuse:
+  langfuse:
+    salt:
+      value: test-salt
+    encryptionKey:
+      value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    nextauth:
+      secret:
+        value: test-nextauth-secret
+
+  postgresql:
+    deploy: false
+    host: postgres.example
+    auth:
+      username: langfuse
+      password: test-password
+      database: langfuse
+
+  clickhouse:
+    deploy: false
+    host: clickhouse.example
+    auth:
+      username: default
+      password: test-password
+
+  redis:
+    deploy: true
+    auth:
+      password: test-password
+
+  s3:
+    deploy: false
+    bucket: langfuse
+    region: us-east-1
+    endpoint: https://s3.example
+    forcePathStyle: true
+    auth:
+      accessKeyId: test-access-key
+      secretAccessKey: test-secret-key
+    eventUpload:
+      bucket: langfuse
+    batchExport:
+      bucket: langfuse
+    mediaUpload:
+      bucket: langfuse

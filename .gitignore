@@ -13,6 +13,10 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Helm dependency archives — resolved from Chart.lock by `helm dependency
+# build`, so the tarball itself is not committed. Chart.lock IS committed.
+charts/*/charts/*.tgz
+
 # Editor scratch
 .vscode/
 .idea/

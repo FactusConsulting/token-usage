@@ -1,0 +1,19 @@
+{{- include "langfuse-stack.assertions" . -}}
+# Records which guards were in force for the rendered release. Exists mainly so
+# the assertions above are evaluated on every render — Helm only executes
+# templates that produce output.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "langfuse-stack.fullname" . }}-guards
+  labels:
+    {{- include "langfuse-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: guards
+data:
+  imageTag: {{ include "langfuse-stack.imageTag" . | quote }}
+  blockV4WithBundledClickHouse: {{ .Values.guards.blockV4WithBundledClickHouse | quote }}
+  requireExternalState: {{ .Values.guards.requireExternalState | quote }}
+  clickhouseOwnedByChart: {{ include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "clickhouse") | quote }}
+  postgresqlOwnedByChart: {{ include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "postgresql") | quote }}
+  s3OwnedByChart: {{ include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "s3") | quote }}
+  operatorManagedClickHouse: {{ .Values.clickhouseCluster.enabled | quote }}

@@ -54,9 +54,16 @@ of Langfuse first, not just a re-import.
 ## What lives here vs. what does NOT
 
 - **HERE:** per-PC installers, the shim script, scheduled-task / systemd unit
-  templates, README + this file.
-- **NOT HERE:** the Langfuse cluster deployment (lives in `flux-home`),
+  templates, the `langfuse-stack` Helm chart under `charts/`, README + this file.
+- **NOT HERE:** the Langfuse cluster *deployment* — the HelmRelease, values,
+  secrets and cluster wiring live in `flux-home/applications/langfuse/`.
   whisper-dictate-related work (lives in `whisper-dictate`).
+
+The chart/deployment split: this repo owns the *packaging* (`charts/langfuse-stack`
+— the upstream dependency, the ClickHouse operator resources and the data-safety
+guards), `flux-home` owns the *instance* (which version runs, on which hosts,
+with which secrets). `flux-home` consumes the chart through a `GitRepository`
+source pointing here, so a chart change is reviewed here and rolled out there.
 
 When in doubt, ask before adding a new top-level directory.
 

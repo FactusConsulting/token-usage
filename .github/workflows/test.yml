@@ -18,3 +18,50 @@ jobs:
         run: pip install --quiet pytest requests python-dotenv
       - name: Run tests
         run: python -m pytest shim/ -v
+
+  chart:
+    name: langfuse-stack chart (lint + guards)
+    runs-on: ubuntu-latest
+    env:
+      CHART: charts/langfuse-stack
+      VALUES: charts/langfuse-stack/ci/test-values.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Resolve dependencies
+        run: helm dependency build "$CHART"
+      - name: Lint
+        run: helm lint "$CHART" -f "$VALUES"
+      - name: Renders with external state
+        run: helm template t "$CHART" -f "$VALUES" > /dev/null
+      - name: Guard rejects v4 on the bundled ClickHouse
+        run: |
+          if helm template t "$CHART" -f "$VALUES" \
+               --set langfuse.clickhouse.deploy=true \
+               --set langfuse.langfuse.image.tag=4.0.0 > /dev/null 2>&1; then
+            echo "guard did not fire: v4 + bundled ClickHouse rendered successfully"
+            exit 1
+          fi
+      - name: Guard rejects chart-owned state when required external
+        run: |
+          if helm template t "$CHART" -f "$VALUES" \
+               --set guards.requireExternalState=true \
+               --set langfuse.clickhouse.deploy=true > /dev/null 2>&1; then
+            echo "guard did not fire: chart-owned ClickHouse rendered successfully"
+            exit 1
+          fi
+      - name: Guard rejects the latest tag
+        run: |
+          if helm template t "$CHART" -f "$VALUES" \
+               --set langfuse.langfuse.image.tag=latest > /dev/null 2>&1; then
+            echo "guard did not fire: tag 'latest' rendered successfully"
+            exit 1
+          fi
+      - name: v4 with operator-managed ClickHouse renders
+        run: |
+          helm template t "$CHART" -f "$VALUES" \
+            --set langfuse.langfuse.image.tag=4.0.0 \
+            --set clickhouseCluster.enabled=true \
+            | grep -q '^kind: ClickHouseCluster'
