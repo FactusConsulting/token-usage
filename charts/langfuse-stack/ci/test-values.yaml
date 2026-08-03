@@ -1,22 +1,15 @@
-# Minimum values that satisfy the upstream chart's required-field checks, so
-# `helm template` / `helm lint` can exercise this chart's guards in CI.
+# Minimum non-secret values that satisfy the upstream chart's required-field
+# checks, so `helm template` / `helm lint` can exercise this chart's guards in
+# CI. Secrets (encryption key, salt, passwords) are generated at run time by
+# ci/render.sh and deliberately not committed here.
+#
 # Not a deployment example — the real values live in the deploying repository.
 langfuse:
-  langfuse:
-    salt:
-      value: test-salt
-    encryptionKey:
-      value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    nextauth:
-      secret:
-        value: test-nextauth-secret
-
   postgresql:
     deploy: false
     host: postgres.example
     auth:
       username: langfuse
-      password: test-password
       database: langfuse
 
   clickhouse:
@@ -24,12 +17,9 @@ langfuse:
     host: clickhouse.example
     auth:
       username: default
-      password: test-password
 
   redis:
     deploy: true
-    auth:
-      password: test-password
 
   s3:
     deploy: false
@@ -38,8 +28,7 @@ langfuse:
     endpoint: https://s3.example
     forcePathStyle: true
     auth:
-      accessKeyId: test-access-key
-      secretAccessKey: test-secret-key
+      accessKeyId: render-test
     eventUpload:
       bucket: langfuse
     batchExport:

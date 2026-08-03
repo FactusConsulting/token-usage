@@ -65,12 +65,15 @@ ClickHouse or object storage, which is why the guards centre on it.
 
 ```bash
 helm dependency build charts/langfuse-stack
-helm lint charts/langfuse-stack -f charts/langfuse-stack/ci/test-values.yaml
-helm template t charts/langfuse-stack -f charts/langfuse-stack/ci/test-values.yaml
+charts/langfuse-stack/ci/render.sh lint
+charts/langfuse-stack/ci/render.sh                      # helm template
+charts/langfuse-stack/ci/render.sh --set langfuse.langfuse.image.tag=4.0.0
 ```
 
-`ci/test-values.yaml` only satisfies upstream's required-field checks so the
-guards can be exercised; it is not a deployment example.
+`ci/render.sh` generates the encryption key, salt and passwords the upstream
+chart demands, so no credential-shaped literals are committed.
+`ci/test-values.yaml` holds only the non-secret structure needed to reach the
+guards; neither is a deployment example.
 
 Do not add `charts/*.tgz` to `.helmignore` — Helm resolves the packaged
 dependency from there, and ignoring it makes every render fail with

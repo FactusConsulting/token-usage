@@ -39,12 +39,12 @@ jobs:
           helm repo update
           helm dependency build "$CHART"
       - name: Lint
-        run: helm lint "$CHART" -f "$VALUES"
+        run: $CHART/ci/render.sh lint
       - name: Renders with external state
-        run: helm template t "$CHART" -f "$VALUES" > /dev/null
+        run: $CHART/ci/render.sh > /dev/null
       - name: Guard rejects v4 on the bundled ClickHouse
         run: |
-          if helm template t "$CHART" -f "$VALUES" \
+          if $CHART/ci/render.sh \
                --set langfuse.clickhouse.deploy=true \
                --set langfuse.langfuse.image.tag=4.0.0 > /dev/null 2>&1; then
             echo "guard did not fire: v4 + bundled ClickHouse rendered successfully"
@@ -52,7 +52,7 @@ jobs:
           fi
       - name: Guard rejects chart-owned state when required external
         run: |
-          if helm template t "$CHART" -f "$VALUES" \
+          if $CHART/ci/render.sh \
                --set guards.requireExternalState=true \
                --set langfuse.clickhouse.deploy=true > /dev/null 2>&1; then
             echo "guard did not fire: chart-owned ClickHouse rendered successfully"
@@ -60,14 +60,14 @@ jobs:
           fi
       - name: Guard rejects the latest tag
         run: |
-          if helm template t "$CHART" -f "$VALUES" \
+          if $CHART/ci/render.sh \
                --set langfuse.langfuse.image.tag=latest > /dev/null 2>&1; then
             echo "guard did not fire: tag 'latest' rendered successfully"
             exit 1
           fi
       - name: v4 with operator-managed ClickHouse renders
         run: |
-          helm template t "$CHART" -f "$VALUES" \
+          $CHART/ci/render.sh \
             --set langfuse.langfuse.image.tag=4.0.0 \
             --set clickhouseCluster.enabled=true \
             | grep -q '^kind: ClickHouseCluster'
