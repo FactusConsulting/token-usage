@@ -22,6 +22,13 @@ if [ "$#" -gt 0 ]; then
       CMD="$1"
       shift
       ;;
+    -*)
+      # Anything else is a helm flag — leave it in "$@" for pass-through.
+      ;;
+    *)
+      echo "usage: $0 [template|lint] [helm flags...]" >&2
+      exit 2
+      ;;
   esac
 fi
 

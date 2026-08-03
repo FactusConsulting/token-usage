@@ -27,7 +27,9 @@ jobs:
       VALUES: charts/langfuse-stack/ci/test-values.yaml
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      # Pinned to a commit SHA: a mutable tag on a third-party action can be
+      # repointed at arbitrary code after review.
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.19.0
       - name: Resolve dependencies
