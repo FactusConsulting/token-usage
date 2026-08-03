@@ -15,7 +15,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install --quiet pytest requests python-dotenv
+        # Pinned and wheel-only: unpinned installs resolve to whatever is
+        # newest at run time, and a source distribution executes setup code
+        # during install.
+        run: |
+          pip install --quiet --only-binary :all: \
+            pytest==9.1.1 \
+            requests==2.34.2 \
+            python-dotenv==1.2.2
       - name: Run tests
         run: python -m pytest shim/ -v
 
