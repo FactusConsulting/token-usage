@@ -31,7 +31,13 @@ jobs:
         with:
           version: v3.19.0
       - name: Resolve dependencies
-        run: helm dependency build "$CHART"
+        # `helm dependency build` resolves Chart.lock against the local repo
+        # list, so the upstream repo has to be registered first even though
+        # Chart.yaml names its URL.
+        run: |
+          helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+          helm repo update
+          helm dependency build "$CHART"
       - name: Lint
         run: helm lint "$CHART" -f "$VALUES"
       - name: Renders with external state
