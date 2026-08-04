@@ -185,6 +185,43 @@ def _project_label(project_path: str | None) -> str | None:
     return label or None
 
 
+def _cache_read_key(model: str) -> str:
+    """The usageDetails key Langfuse prices cache reads under, per provider.
+
+    Langfuse's built-in price table is provider-specific about this, and a key
+    it does not price is silently worth nothing — the tokens still show up in
+    the dashboard, but they contribute $0 to cost and nothing errors:
+
+      * Anthropic entries price both `cache_read_input_tokens` (Anthropic's own
+        wire name) and `input_cache_read`.
+      * OpenAI entries price only `input_cache_read` / `input_cached_tokens`.
+
+    Sending Anthropic's name for every source therefore left cache reads
+    unpriced on the OpenAI models — and for codex sessions the cache-read
+    bucket is the overwhelming majority of the tokens, so the reported cost was
+    a small fraction of the real one. Emit exactly one key, chosen by model
+    family, so the totals stay correct (Langfuse sums usageDetails).
+    """
+    head = model.split("/")[-1].lower()
+    if head.startswith("claude") or head.startswith("anthropic."):
+        return "cache_read_input_tokens"
+    return "input_cache_read"
+
+
+def _usage_details(model: str, bd: dict[str, Any]) -> dict[str, int]:
+    """Token counts for one model's generation, keyed the way Langfuse's price
+    table for that provider expects."""
+    return {
+        "input": int(bd.get("inputTokens", 0)),
+        "output": int(bd.get("outputTokens", 0)),
+        # Anthropic charges a premium for cache writes; OpenAI does not price
+        # them at all, and ccusage reports 0 there, so this key is harmless on
+        # non-Anthropic models.
+        "cache_creation_input_tokens": int(bd.get("cacheCreationTokens", 0)),
+        _cache_read_key(model): int(bd.get("cacheReadTokens", 0)),
+    }
+
+
 def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
                  granularity: str = "session") -> list[dict[str, Any]]:
     """Map ccusage rows to a Langfuse ingestion batch.
@@ -294,19 +331,13 @@ def _build_batch(rows: list[dict[str, Any]], host: str, source: str,
                     # first-class: cache tokens count toward the totals and
                     # show up in "Usage by type", instead of being buried in
                     # metadata where Langfuse ignores them. Langfuse sums these
-                    # for the trace's total tokens. For Claude the cache_read
-                    # bucket dwarfs input/output, so this is the difference
-                    # between the dashboard undercounting by ~100x and being
-                    # accurate. Key names match Anthropic's so Langfuse model
-                    # pricing can map cache rates when defined.
-                    "usageDetails": {
-                        "input": int(bd.get("inputTokens", 0)),
-                        "output": int(bd.get("outputTokens", 0)),
-                        "cache_creation_input_tokens": int(
-                            bd.get("cacheCreationTokens", 0)),
-                        "cache_read_input_tokens": int(
-                            bd.get("cacheReadTokens", 0)),
-                    },
+                    # for the trace's total tokens. The cache_read bucket
+                    # dwarfs input/output, so this is the difference between
+                    # the dashboard undercounting by ~100x and being accurate.
+                    #
+                    # The cache-read key is provider-specific — see
+                    # _cache_read_key.
+                    "usageDetails": _usage_details(model, bd),
                     # No costDetails: Langfuse computes cost itself from these
                     # token counts x its dated model prices (historically
                     # correct), and leaves self-hosted models with no price
