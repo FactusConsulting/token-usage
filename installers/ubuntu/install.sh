@@ -32,6 +32,16 @@ echo "[install] install dir: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$UNIT_DIR" "$BIN_DIR"
 
 # 1. Node 20 — only install if missing or older than 20.
+# An nvm-managed node is invisible here: nvm.sh is sourced from .bashrc, which
+# returns early when the shell is non-interactive. Load it before concluding
+# node is missing, or this apt-installs a system Node 20 the machine does not
+# need — and blocks on a sudo password prompt to do it.
+if ! command -v node >/dev/null 2>&1 && [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
+    echo "[install] node not on PATH — sourcing nvm"
+    # shellcheck disable=SC1091
+    . "${NVM_DIR:-$HOME/.nvm}/nvm.sh" >/dev/null 2>&1 || true
+fi
+
 if ! command -v node >/dev/null 2>&1 || \
    [ "$(node --version | sed 's/v\([0-9]*\).*/\1/')" -lt 20 ]; then
     echo "[install] installing Node.js 20 via nodesource..."
@@ -44,14 +54,27 @@ fi
 # 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
 # Packagers (choco / brew / nix) all read this same file, so a single bump
 # propagates everywhere.
+#
+# Only reach for sudo when the global prefix actually needs it: a system node
+# installs into /usr, but an nvm one installs into the user's own ~/.nvm tree,
+# where sudo is both unnecessary and (with no tty) a hang waiting for a
+# password.
+NPM_PREFIX="$(npm prefix -g 2>/dev/null || true)"
+if [ -n "$NPM_PREFIX" ] && [ -w "$NPM_PREFIX" ]; then
+    NPM_SUDO=""
+    echo "[install] npm global prefix $NPM_PREFIX is user-writable — no sudo needed"
+else
+    NPM_SUDO="sudo"
+fi
+
 CCUSAGE_VERSION_FILE="$REPO_ROOT/CCUSAGE_VERSION"
 if [ -f "$CCUSAGE_VERSION_FILE" ]; then
     CCUSAGE_VERSION="$(tr -d '\n' < "$CCUSAGE_VERSION_FILE")"
     echo "[install] (re)installing ccusage@$CCUSAGE_VERSION globally..."
-    sudo npm install -g "ccusage@$CCUSAGE_VERSION"
+    $NPM_SUDO npm install -g "ccusage@$CCUSAGE_VERSION"
 else
     echo "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
-    sudo npm install -g ccusage
+    $NPM_SUDO npm install -g ccusage
 fi
 
 # Where ccusage actually landed. With nvm-managed node that is somewhere under
