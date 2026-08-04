@@ -92,6 +92,16 @@ Total input = `input + cache_creation + cache_read`. Cache writes carry a
 premium; cache reads are ~90% cheaper than fresh input — that's the whole point
 of prompt caching.
 
+> **The cache-read key is provider-specific.** Langfuse's built-in price table
+> prices Anthropic models under both `cache_read_input_tokens` and
+> `input_cache_read`, but OpenAI models under `input_cache_read` /
+> `input_cached_tokens` only. A key Langfuse does not price is worth **$0** —
+> the tokens still appear in the dashboard, and nothing errors. Sending
+> Anthropic's name for every source therefore left cache reads unpriced on the
+> codex models, where they are the overwhelming majority of the volume. The
+> shim now picks the key by model family (`_cache_read_key`), emitting exactly
+> one so the token totals stay correct.
+
 This is why the dashboard numbers look the way they do: a model can show
 **billions** of tokens but a modest cost, because the bulk is cache-reads at
 $0.50/M, not $5/M. Before this was wired up, cache tokens lived in trace

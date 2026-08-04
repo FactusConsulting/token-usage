@@ -148,7 +148,30 @@ def test_codex_uses_real_model_name_so_langfuse_can_price_it():
     _, gens = _split(batch)
     body = gens[0]["body"]
     assert body["model"] == "gpt-5.5"  # not "codex"/"aggregate"
-    assert body["usageDetails"]["cache_read_input_tokens"] == 60
+    # OpenAI models are priced under input_cache_read; Anthropic's key name
+    # would leave these tokens worth $0.
+    assert body["usageDetails"]["input_cache_read"] == 60
+    assert "cache_read_input_tokens" not in body["usageDetails"]
+
+
+@pytest.mark.parametrize("model,expected", [
+    ("claude-opus-5", "cache_read_input_tokens"),
+    ("claude-haiku-4-5-20251001", "cache_read_input_tokens"),
+    ("anthropic.claude-opus-4-8", "cache_read_input_tokens"),
+    ("anthropic/claude-sonnet-5", "cache_read_input_tokens"),
+    ("gpt-5.5", "input_cache_read"),
+    ("gpt-5.6-sol", "input_cache_read"),
+    ("gpt-5.3-codex-spark", "input_cache_read"),
+    ("openai/gpt-5", "input_cache_read"),
+])
+def test_cache_read_key_matches_the_provider_langfuse_prices(model, expected):
+    """Langfuse prices cache reads under a provider-specific key, and a key it
+    does not price contributes $0 while still showing up as tokens. Emitting
+    the wrong one is silent, so pin the mapping."""
+    details = ship._usage_details(model, {"cacheReadTokens": 7})
+    assert details[expected] == 7
+    other = ({"cache_read_input_tokens", "input_cache_read"} - {expected}).pop()
+    assert other not in details
 
 
 def test_falls_back_to_source_when_no_model_name_anywhere():
