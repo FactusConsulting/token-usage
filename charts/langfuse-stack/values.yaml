@@ -42,6 +42,12 @@ clickhouseCluster:
       tag: "26.4"
     storage: 10Gi
     storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
 
   server:
     replicas: 1 # 3 recommended for production; 1 is fine for a single-node homelab
@@ -51,6 +57,16 @@ clickhouseCluster:
       tag: "26.4"
     storage: 100Gi
     storageClassName: ""
+    # The operator defaults to a 512Mi limit, which ClickHouse turns into a
+    # ~460 MiB internal cap — small enough that even `SELECT … FROM
+    # system.tables` fails with MEMORY_LIMIT_EXCEEDED, and any sizeable INSERT
+    # or a legacy API query times out. Give it what the bundled sub-chart had.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 2Gi
+      limits:
+        memory: 4Gi
 
 # ---------------------------------------------------------------------------
 # Pre-upgrade guard: refuse to upgrade unless a recent CNPG backup completed.
