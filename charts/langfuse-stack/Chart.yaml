@@ -7,7 +7,7 @@ description: >-
 type: application
 
 # Chart version — bump on any change in this directory.
-version: 0.1.0
+version: 0.2.0
 
 # Mirrors the pinned upstream appVersion below. Override
 # langfuse.langfuse.image.tag to run a different Langfuse release.

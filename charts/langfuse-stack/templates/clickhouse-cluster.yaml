@@ -21,6 +21,10 @@ spec:
     image:
       repository: {{ $cc.keeper.image.repository }}
       tag: {{ $cc.keeper.image.tag | quote }}
+    {{- with $cc.keeper.resources }}
+    resources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   dataVolumeClaimSpec:
     {{- with $cc.keeper.storageClassName }}
     storageClassName: {{ . }}
@@ -48,6 +52,10 @@ spec:
     image:
       repository: {{ $cc.server.image.repository }}
       tag: {{ $cc.server.image.tag | quote }}
+    {{- with $cc.server.resources }}
+    resources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   dataVolumeClaimSpec:
     {{- with $cc.server.storageClassName }}
     storageClassName: {{ . }}
