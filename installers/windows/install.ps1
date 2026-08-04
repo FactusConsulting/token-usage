@@ -10,6 +10,7 @@
       * shim/ccusage-ship.py copied to %LOCALAPPDATA%\token-usage\
       * Python deps installed into a venv at %LOCALAPPDATA%\token-usage\.venv
       * .env created with placeholder values if missing (user fills it in)
+      * token-usage.cmd entry point, with the install dir added to the user PATH
       * Scheduled Task "TokenUsageCcusageShip" running hourly as the current
         user (Interactive logon), launched via pythonw so no console window
         flashes on each run
@@ -129,7 +130,33 @@ with open(log, "ab") as fh:
 $staleCmd = Join-Path $installDir 'run-ship.cmd'
 if (Test-Path $staleCmd) { Remove-Item -Force $staleCmd }
 
-# 6. Scheduled Task - hourly, Interactive logon. S4U ("run whether logged on or
+# 6. `token-usage` entry point. The Homebrew and Nix channels expose one, and
+# the docs tell every user to run `token-usage --dry-run`; without this the
+# command simply doesn't exist on Windows. Uses python.exe (not pythonw) so an
+# interactive run prints to the console the user typed it in.
+$cliCmd = Join-Path $installDir 'token-usage.cmd'
+@"
+@echo off
+rem token-usage CLI entry point. Interactive counterpart to the hourly
+rem Scheduled Task, which runs run-ship.pyw via pythonw instead.
+"$venvPython" "$(Join-Path $installDir 'ccusage-ship.py')" %*
+exit /b %ERRORLEVEL%
+"@ | Set-Content -Path $cliCmd -Encoding ASCII
+
+# Put the install dir on the user PATH so `token-usage` resolves in new shells.
+# Idempotent: re-running must not append a duplicate entry.
+$userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+if ([string]::IsNullOrEmpty($userPath)) { $userPath = '' }
+$onPath = $userPath.Split(';') | Where-Object { $_.TrimEnd('\') -ieq $installDir.TrimEnd('\') }
+if (-not $onPath) {
+    $newPath = if ($userPath.Trim()) { "$($userPath.TrimEnd(';'));$installDir" } else { $installDir }
+    [System.Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+    Write-Host "[install] added $installDir to the user PATH (open a new shell to pick it up)."
+} else {
+    Write-Host "[install] $installDir already on the user PATH."
+}
+
+# 7. Scheduled Task - hourly, Interactive logon. S4U ("run whether logged on or
 # not") silently never starts for a standard (non-admin) user, so the task
 # would register yet never ship. Interactive runs reliably while the user is
 # logged in; pythonw keeps it silent. RepetitionDuration must be set explicitly
@@ -148,4 +175,5 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
 
 Write-Host "[install] Scheduled Task '$taskName' registered (hourly, silent)."
 Write-Host "[install] Done. Edit $envTarget then either wait an hour or run:"
+Write-Host "         token-usage --dry-run          # new shell; print, don't send"
 Write-Host "         Start-ScheduledTask -TaskName $taskName"
