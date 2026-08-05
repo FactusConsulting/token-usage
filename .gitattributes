@@ -1,0 +1,5 @@
+# Shell scripts must keep LF even in a Windows working tree. WSL2 runs the
+# Ubuntu installer straight out of /mnt/c on a Windows clone, and with
+# core.autocrlf=true the CRLFs make bash choke on `set -o pipefail` before it
+# reaches the first real line.
+*.sh text eol=lf

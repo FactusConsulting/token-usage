@@ -46,3 +46,14 @@ Write-Host "[choco] running $installer with RepoRoot=$repoRoot"
 if ($LASTEXITCODE -ne 0) {
     throw "install.ps1 exited $LASTEXITCODE"
 }
+
+# install.ps1 writes token-usage.cmd and puts its dir on the user PATH. Shim it
+# into Chocolatey's bin dir as well: that's the idiomatic way a choco package
+# exposes a command, it works in the current shell without a PATH refresh, and
+# chocolateyuninstall.ps1 removes it symmetrically.
+$cliCmd = Join-Path $env:LOCALAPPDATA 'token-usage\token-usage.cmd'
+if (Test-Path -LiteralPath $cliCmd) {
+    Install-BinFile -Name 'token-usage' -Path $cliCmd
+} else {
+    Write-Warning "[choco] $cliCmd not found - 'token-usage' will only be available via the user PATH."
+}

@@ -57,8 +57,15 @@ no scheduler — wire `token-usage` into your own systemd timer / launchd / cron
 ### From a clone (no package manager)
 
 `installers/windows/install.ps1` and `installers/ubuntu/install.sh` do the full
-setup (Node + ccusage + shim + scheduled task / systemd timer) from a checkout.
-The package managers are preferred; this is the fallback.
+setup (Node + ccusage + shim + `token-usage` command + scheduled task / systemd
+timer) from a checkout. The package managers are preferred; this is the fallback.
+
+All four channels put a `token-usage` command on PATH: `%LOCALAPPDATA%\token-usage\token-usage.cmd`
+on Windows (added to the user PATH — **open a new shell** after installing, and
+Chocolatey additionally shims it into its own bin dir), `~/.local/bin/token-usage`
+on a clone install, and `$(brew --prefix)/bin/token-usage` under Homebrew. The
+scheduled runs deliberately bypass it and call the venv Python directly, so a
+broken PATH can't stop the hourly import.
 
 ## Configure
 
