@@ -42,6 +42,18 @@ clickhouseCluster:
       tag: "26.4"
     storage: 10Gi
     storageClassName: ""
+    # Pod-level securityContext, passed straight to the operator's
+    # spec.podTemplate.securityContext. Empty by default: the operator supplies
+    # its own (fsGroup/runAsUser/runAsGroup 101, runAsNonRoot, RuntimeDefault),
+    # and anything set here is sent instead of relying on those — so supply the
+    # complete set, not just the field you want to change.
+    #
+    # The reason this hook exists: on a network filesystem, fsGroup makes
+    # kubelet chown the volume recursively on every pod start, one round trip
+    # per file. A ClickHouse data directory reached 146k files here and the pod
+    # sat in ContainerCreating for seven minutes. fsGroupChangePolicy:
+    # OnRootMismatch skips the walk when the root already has the right owner.
+    podSecurityContext: {}
     resources:
       requests:
         cpu: 100m
@@ -57,6 +69,18 @@ clickhouseCluster:
       tag: "26.4"
     storage: 100Gi
     storageClassName: ""
+    # Pod-level securityContext, passed straight to the operator's
+    # spec.podTemplate.securityContext. Empty by default: the operator supplies
+    # its own (fsGroup/runAsUser/runAsGroup 101, runAsNonRoot, RuntimeDefault),
+    # and anything set here is sent instead of relying on those — so supply the
+    # complete set, not just the field you want to change.
+    #
+    # The reason this hook exists: on a network filesystem, fsGroup makes
+    # kubelet chown the volume recursively on every pod start, one round trip
+    # per file. A ClickHouse data directory reached 146k files here and the pod
+    # sat in ContainerCreating for seven minutes. fsGroupChangePolicy:
+    # OnRootMismatch skips the walk when the root already has the right owner.
+    podSecurityContext: {}
     # The operator defaults to a 512Mi limit, which ClickHouse turns into a
     # ~460 MiB internal cap — small enough that even `SELECT … FROM
     # system.tables` fails with MEMORY_LIMIT_EXCEEDED, and any sizeable INSERT
