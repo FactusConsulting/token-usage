@@ -25,6 +25,11 @@ spec:
     resources:
       {{- toYaml . | nindent 6 }}
     {{- end }}
+  {{- with $cc.keeper.podSecurityContext }}
+  podTemplate:
+    securityContext:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
   dataVolumeClaimSpec:
     {{- with $cc.keeper.storageClassName }}
     storageClassName: {{ . }}
@@ -56,6 +61,11 @@ spec:
     resources:
       {{- toYaml . | nindent 6 }}
     {{- end }}
+  {{- with $cc.server.podSecurityContext }}
+  podTemplate:
+    securityContext:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
   dataVolumeClaimSpec:
     {{- with $cc.server.storageClassName }}
     storageClassName: {{ . }}
