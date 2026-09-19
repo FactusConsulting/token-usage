@@ -10,10 +10,13 @@
 # a known-bad configuration reach the cluster.
 # ---------------------------------------------------------------------------
 guards:
-  # Langfuse v4 does not work with the ClickHouse bundled in the upstream
-  # chart — upstream's own v4 example runs ClickHouse via the operator. This
-  # combination silently produces a broken install, so it is refused.
-  blockV4WithBundledClickHouse: true
+  # NOTE: blockV4WithBundledClickHouse was removed when this chart moved to
+  # upstream 2.x. It refused a v4 image tag while langfuse.clickhouse.deploy
+  # was true, because the chart's bundled ClickHouse was Bitnami's and could
+  # not run v4. As of upstream 2.0.0 the bundled ClickHouse *is* the operator
+  # (ClickHouseCluster + KeeperCluster) and runs v4, so the guard would now
+  # refuse a configuration that is correct. A value left here for it is
+  # ignored.
 
   # Refuse to render if any stateful component is still owned by the chart.
   # Left off during the migration; turn on once Postgres, ClickHouse and object
@@ -124,7 +127,10 @@ langfuse:
     image:
       # Pin explicitly. "4" or "latest" would make the running version
       # unreproducible and is rejected by the cluster's admission policy.
-      tag: "3.224.1"
+      #
+      # Kept equal to this chart's appVersion, which mirrors the appVersion of
+      # the pinned upstream chart — that is the pairing upstream tests.
+      tag: "4.35.0"
 
   # State lives outside the chart. Each of these must be pointed at an
   # external instance by the deploying repository.
@@ -137,5 +143,18 @@ langfuse:
 
   # Redis/Valkey is a cache — losing it costs a warm-up, not data — so the
   # chart may own it.
+  #
+  # Upstream 2.x swapped the sub-chart from Bitnami's valkey to valkey-io's,
+  # which renders a Deployment plus a standalone PVC instead of a StatefulSet
+  # with a volumeClaimTemplate. Three consequences for a deploying repository:
+  #   - `architecture` and `primary.persistence.*` are gone. Storage is
+  #     `redis.dataStorage.{enabled,requestedSize,className,keepPvc}`, and an
+  #     unset className silently lands on the cluster default.
+  #   - `auth.enabled: false` no longer applies to the bundled Valkey: the
+  #     chart always provisions an ACL user and a `<release>-redis-auth`
+  #     Secret (random on first render, then reused via lookup, and annotated
+  #     helm.sh/resource-policy: keep).
+  #   - `valkeyConfig` must keep `maxmemory-policy noeviction`; upstream
+  #     validates it, because jobs are lost under eviction.
   redis:
     deploy: true

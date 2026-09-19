@@ -23,9 +23,14 @@ StatefulSets and PVCs, so uninstalling the release cannot delete the traces.
 
 | Guard | Refuses |
 |---|---|
-| `blockV4WithBundledClickHouse` | a v4 image tag while `langfuse.clickhouse.deploy` is still `true` |
 | `requireExternalState` | any of postgresql / clickhouse / s3 still owned by the chart |
 | *(always on)* | the image tag `latest` |
+
+`blockV4WithBundledClickHouse` was dropped in chart 0.3.0. It refused a v4
+image tag while `langfuse.clickhouse.deploy` was `true`, which was correct
+while the upstream chart bundled Bitnami's ClickHouse. Upstream 2.0.0 replaced
+that with the ClickHouse operator, which runs v4 — so the guard would now
+refuse a valid configuration.
 
 **3. Optional pre-upgrade backup check.** With
 `preUpgradeBackupCheck.enabled=true`, a Helm `pre-upgrade` hook refuses the
@@ -43,7 +48,7 @@ while `langfuse.clickhouse.*` and friends are its sub-chart toggles:
 langfuse:
   langfuse:
     image:
-      tag: "3.224.1"     # pin explicitly; "latest" is refused
+      tag: "4.35.0"      # pin explicitly; "latest" is refused
   clickhouse:
     deploy: false        # external, operator-managed
 ```

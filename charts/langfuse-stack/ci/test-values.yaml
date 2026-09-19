@@ -18,8 +18,14 @@ langfuse:
     auth:
       username: default
 
+  # Exercises the valkey-io storage keys introduced by upstream 2.x, so a
+  # future rename is caught by CI rather than by an empty PVC in a cluster.
   redis:
     deploy: true
+    dataStorage:
+      enabled: true
+      requestedSize: 1Gi
+      className: standard
 
   s3:
     deploy: false

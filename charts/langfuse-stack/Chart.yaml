@@ -7,11 +7,11 @@ description: >-
 type: application
 
 # Chart version — bump on any change in this directory.
-version: 0.2.1
+version: 0.3.0
 
 # Mirrors the pinned upstream appVersion below. Override
 # langfuse.langfuse.image.tag to run a different Langfuse release.
-appVersion: "3.224.1"
+appVersion: "4.35.0"
 
 keywords:
   - langfuse
@@ -27,5 +27,5 @@ dependencies:
   # on every Langfuse release, which is exactly how the price table fell five
   # weeks behind in the first place.
   - name: langfuse
-    version: "1.5.41"
+    version: "2.1.1"
     repository: https://langfuse.github.io/langfuse-k8s

@@ -90,6 +90,16 @@ spec:
               drop: ["ALL"]
           resources:
             {{- toYaml $c.resources | nindent 12 }}
+          # readOnlyRootFilesystem is on, and kubectl writes a discovery cache
+          # under $HOME/.kube/cache. HOME for uid 65534 is not writable here,
+          # so give it somewhere to go — otherwise every upgrade would turn on
+          # whether kubectl treats that write failure as fatal.
+          env:
+            - name: HOME
+              value: /tmp
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -99,7 +109,7 @@ spec:
 
               echo "Checking for a completed backup of CNPG cluster '$CLUSTER' in the last ${MAX_AGE_HOURS}h..."
 
-              LATEST=$(kubectl get backups.postgresql.cnpg.io \
+              LATEST=$(kubectl --cache-dir=/tmp/kubecache get backups.postgresql.cnpg.io \
                 -n {{ .Release.Namespace }} \
                 -o jsonpath="{range .items[?(@.spec.cluster.name=='${CLUSTER}')]}{.status.phase} {.status.stoppedAt}{'\n'}{end}" \
                 | grep '^completed ' | awk '{print $2}' | sort | tail -1)
@@ -120,4 +130,7 @@ spec:
                 exit 1
               fi
               echo "Backup is fresh enough — proceeding with the upgrade."
+      volumes:
+        - name: tmp
+          emptyDir: {}
 {{- end }}

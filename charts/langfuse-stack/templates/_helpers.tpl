@@ -55,12 +55,6 @@ guard.
 {{- $pg := eq "true" (include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "postgresql")) -}}
 {{- $s3 := eq "true" (include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "s3")) -}}
 
-{{- if and .Values.guards.blockV4WithBundledClickHouse $ch -}}
-{{- if or (hasPrefix "4." $tag) (eq $tag "4") -}}
-{{- fail (printf "langfuse-stack: image tag %q is Langfuse v4, but langfuse.clickhouse.deploy is still true. The ClickHouse bundled with the upstream chart is not compatible with v4 — move ClickHouse to the operator (clickhouseCluster.enabled=true, langfuse.clickhouse.deploy=false) before changing the tag. Set guards.blockV4WithBundledClickHouse=false to override." $tag) -}}
-{{- end -}}
-{{- end -}}
-
 {{- if .Values.guards.requireExternalState -}}
 {{- $owned := list -}}
 {{- if $ch }}{{- $owned = append $owned "clickhouse" -}}{{- end -}}
