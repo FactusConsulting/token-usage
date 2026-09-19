@@ -120,7 +120,21 @@ spec:
                 exit 1
               fi
 
-              LATEST_TS=$(date -u -d "$LATEST" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST" +%s)
+              # BusyBox date — which is what alpine-based images ship — cannot
+              # parse an ISO 8601 string with -d alone; it needs the format
+              # spelled out with -D. GNU date parses it with -d and has no -D,
+              # so try BusyBox first and fall back. The previous fallback was
+              # BSD's `date -j -f`, which exists on neither, so this check
+              # aborted on every run with "date: unrecognized option: j".
+              LATEST_TS=$(date -u -D "%Y-%m-%dT%H:%M:%SZ" -d "$LATEST" +%s 2>/dev/null \
+                       || date -u -d "$LATEST" +%s 2>/dev/null \
+                       || true)
+              if [ -z "$LATEST_TS" ]; then
+                echo "REFUSING UPGRADE: could not parse backup timestamp '$LATEST'."
+                echo "Refusing rather than assuming the backup is fresh."
+                exit 1
+              fi
+
               NOW=$(date -u +%s)
               AGE_HOURS=$(( (NOW - LATEST_TS) / 3600 ))
 
