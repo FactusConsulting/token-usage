@@ -10,13 +10,19 @@ models at `$0`.
 
 ## What it adds
 
-**1. Operator-managed ClickHouse.** Langfuse v4 does not work with the
-ClickHouse bundled in the upstream chart. This chart templates the
+**1. ClickHouse the chart cannot delete.** This chart templates the
 `KeeperCluster` + `ClickHouseCluster` resources for the
 [ClickHouse Kubernetes Operator](https://github.com/ClickHouse/clickhouse-operator),
 following upstream's own `examples/v4-installation`. Both carry
 `helm.sh/resource-policy: keep`, and the operator — not Helm — owns the
 StatefulSets and PVCs, so uninstalling the release cannot delete the traces.
+
+Since upstream 2.0.0 this is **optional**, not required. That release replaced
+the Bitnami ClickHouse — which genuinely could not run Langfuse v4 — with the
+same operator, so `langfuse.clickhouse.deploy=true` is now a valid way to run
+v4. The difference is ownership: upstream's copy is part of the Helm release,
+this one is not. Pick this one when you want the trace store to outlive the
+release; pick upstream's when you would rather have one fewer moving part.
 
 **2. Render-time guards.** Configurations known to break or lose data fail at
 `helm template` time instead of reaching the cluster:
