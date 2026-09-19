@@ -10,22 +10,33 @@ models at `$0`.
 
 ## What it adds
 
-**1. Operator-managed ClickHouse.** Langfuse v4 does not work with the
-ClickHouse bundled in the upstream chart. This chart templates the
+**1. ClickHouse the chart cannot delete.** This chart templates the
 `KeeperCluster` + `ClickHouseCluster` resources for the
 [ClickHouse Kubernetes Operator](https://github.com/ClickHouse/clickhouse-operator),
 following upstream's own `examples/v4-installation`. Both carry
 `helm.sh/resource-policy: keep`, and the operator — not Helm — owns the
 StatefulSets and PVCs, so uninstalling the release cannot delete the traces.
 
+Since upstream 2.0.0 this is **optional**, not required. That release replaced
+the Bitnami ClickHouse — which genuinely could not run Langfuse v4 — with the
+same operator, so `langfuse.clickhouse.deploy=true` is now a valid way to run
+v4. The difference is ownership: upstream's copy is part of the Helm release,
+this one is not. Pick this one when you want the trace store to outlive the
+release; pick upstream's when you would rather have one fewer moving part.
+
 **2. Render-time guards.** Configurations known to break or lose data fail at
 `helm template` time instead of reaching the cluster:
 
 | Guard | Refuses |
 |---|---|
-| `blockV4WithBundledClickHouse` | a v4 image tag while `langfuse.clickhouse.deploy` is still `true` |
 | `requireExternalState` | any of postgresql / clickhouse / s3 still owned by the chart |
 | *(always on)* | the image tag `latest` |
+
+`blockV4WithBundledClickHouse` was dropped in chart 0.3.0. It refused a v4
+image tag while `langfuse.clickhouse.deploy` was `true`, which was correct
+while the upstream chart bundled Bitnami's ClickHouse. Upstream 2.0.0 replaced
+that with the ClickHouse operator, which runs v4 — so the guard would now
+refuse a valid configuration.
 
 **3. Optional pre-upgrade backup check.** With
 `preUpgradeBackupCheck.enabled=true`, a Helm `pre-upgrade` hook refuses the
@@ -43,7 +54,7 @@ while `langfuse.clickhouse.*` and friends are its sub-chart toggles:
 langfuse:
   langfuse:
     image:
-      tag: "3.224.1"     # pin explicitly; "latest" is refused
+      tag: "4.35.0"      # pin explicitly; "latest" is refused
   clickhouse:
     deploy: false        # external, operator-managed
 ```

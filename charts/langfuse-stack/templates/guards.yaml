@@ -11,7 +11,6 @@ metadata:
     app.kubernetes.io/component: guards
 data:
   imageTag: {{ include "langfuse-stack.imageTag" . | quote }}
-  blockV4WithBundledClickHouse: {{ .Values.guards.blockV4WithBundledClickHouse | quote }}
   requireExternalState: {{ .Values.guards.requireExternalState | quote }}
   clickhouseOwnedByChart: {{ include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "clickhouse") | quote }}
   postgresqlOwnedByChart: {{ include "langfuse-stack.subchartDeploys" (dict "Values" .Values "subchart" "postgresql") | quote }}

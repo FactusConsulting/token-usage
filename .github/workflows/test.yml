@@ -51,22 +51,61 @@ jobs:
         run: $CHART/ci/render.sh lint
       - name: Renders with external state
         run: $CHART/ci/render.sh > /dev/null
-      - name: Guard rejects v4 on the bundled ClickHouse
+      # Supplying the valkey-io storage values is not enough on its own: Helm
+      # ignores values a chart does not declare, so if upstream renames
+      # dataStorage again the render still succeeds and the PVC silently falls
+      # back to the default size on the default StorageClass. That is the exact
+      # regression ci/test-values.yaml exists to prevent, so assert the
+      # rendered object rather than trusting the input.
+      - name: Rendered Redis PVC honours ci/test-values.yaml
         run: |
-          if $CHART/ci/render.sh \
-               --set langfuse.clickhouse.deploy=true \
-               --set langfuse.langfuse.image.tag=4.0.0 > /dev/null 2>&1; then
-            echo "guard did not fire: v4 + bundled ClickHouse rendered successfully"
-            exit 1
-          fi
+          $CHART/ci/render.sh > /tmp/rendered.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open('/tmp/rendered.yaml')) if d]
+          pvcs = [d for d in docs if d['kind'] == 'PersistentVolumeClaim']
+          if len(pvcs) != 1:
+              sys.exit(f'expected exactly one PVC, got {[p["metadata"]["name"] for p in pvcs]}')
+          spec = pvcs[0]['spec']
+          got = (spec['resources']['requests']['storage'], spec.get('storageClassName'))
+          want = ('1Gi', 'standard')
+          if got != want:
+              sys.exit(f'PVC {pvcs[0]["metadata"]["name"]}: expected {want}, got {got} — '
+                       'the storage keys in ci/test-values.yaml no longer reach the sub-chart')
+          print(f'PVC {pvcs[0]["metadata"]["name"]}: {got[0]} on {got[1]}')
+          PY
+      # Upstream 2.x bundles the ClickHouse operator, which does run v4, so
+      # there is no longer a guard against that combination — it is a
+      # supported configuration and has to keep rendering.
+      #
+      # --api-versions is required on every render that sets
+      # clickhouse.deploy=true: offline rendering cannot discover the operator's
+      # CRDs, so upstream's own crdCheck aborts first. Without it an assertion
+      # that only checks "did this fail?" passes without ever reaching the
+      # guard it claims to test — which is how the removed v4 guard step kept
+      # reporting success after it stopped testing anything.
+      - name: Bundled operator ClickHouse renders on a v4 tag
+        run: |
+          $CHART/ci/render.sh \
+            --api-versions clickhouse.com/v1alpha1/ClickHouseCluster \
+            --api-versions clickhouse.com/v1alpha1/KeeperCluster \
+            --set langfuse.clickhouse.deploy=true \
+            --set langfuse.langfuse.image.tag=4.35.0 > /dev/null
       - name: Guard rejects chart-owned state when required external
         run: |
-          if $CHART/ci/render.sh \
-               --set guards.requireExternalState=true \
-               --set langfuse.clickhouse.deploy=true > /dev/null 2>&1; then
+          out=$($CHART/ci/render.sh \
+                  --api-versions clickhouse.com/v1alpha1/ClickHouseCluster \
+                  --api-versions clickhouse.com/v1alpha1/KeeperCluster \
+                  --set guards.requireExternalState=true \
+                  --set langfuse.clickhouse.deploy=true 2>&1) && {
             echo "guard did not fire: chart-owned ClickHouse rendered successfully"
             exit 1
-          fi
+          }
+          echo "$out" | grep -q 'guards.requireExternalState is on' || {
+            echo "render failed, but not on our guard:"
+            echo "$out"
+            exit 1
+          }
       - name: Guard rejects the latest tag
         run: |
           if $CHART/ci/render.sh \
