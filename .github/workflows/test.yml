@@ -90,7 +90,7 @@ jobs:
             --api-versions clickhouse.com/v1alpha1/ClickHouseCluster \
             --api-versions clickhouse.com/v1alpha1/KeeperCluster \
             --set langfuse.clickhouse.deploy=true \
-            --set langfuse.langfuse.image.tag=4.35.0 > /dev/null
+            --set langfuse.langfuse.image.tag=4.46.0 > /dev/null
       - name: Guard rejects chart-owned state when required external
         run: |
           out=$($CHART/ci/render.sh \
