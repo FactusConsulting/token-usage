@@ -54,7 +54,7 @@ while `langfuse.clickhouse.*` and friends are its sub-chart toggles:
 langfuse:
   langfuse:
     image:
-      tag: "4.35.0"      # pin explicitly; "latest" is refused
+      tag: "4.46.0"      # pin explicitly; "latest" is refused
   clickhouse:
     deploy: false        # external, operator-managed
 ```

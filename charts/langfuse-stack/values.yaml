@@ -130,7 +130,7 @@ langfuse:
       #
       # Kept equal to this chart's appVersion, which mirrors the appVersion of
       # the pinned upstream chart — that is the pairing upstream tests.
-      tag: "4.35.0"
+      tag: "4.46.0"
 
   # State lives outside the chart. Each of these must be pointed at an
   # external instance by the deploying repository.
