@@ -42,7 +42,7 @@ clickhouseCluster:
     replicas: 3 # must be odd
     image:
       repository: clickhouse/clickhouse-keeper
-      tag: "26.4"
+      tag: "26.9"
     storage: 10Gi
     storageClassName: ""
     # Pod-level securityContext, passed straight to the operator's
