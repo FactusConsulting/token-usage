@@ -10,7 +10,7 @@ jobs:
     name: shim format tests (pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
@@ -33,7 +33,7 @@ jobs:
       CHART: charts/langfuse-stack
       VALUES: charts/langfuse-stack/ci/test-values.yaml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned to a commit SHA: a mutable tag on a third-party action can be
       # repointed at arbitrary code after review.
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
