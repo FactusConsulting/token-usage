@@ -69,7 +69,7 @@ clickhouseCluster:
     shards: 1 # fixed — Langfuse does not support sharding
     image:
       repository: clickhouse/clickhouse-server
-      tag: "26.4"
+      tag: "26.9"
     storage: 100Gi
     storageClassName: ""
     # Pod-level securityContext, passed straight to the operator's
