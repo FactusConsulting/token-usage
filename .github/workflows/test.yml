@@ -38,7 +38,7 @@ jobs:
       # repointed at arbitrary code after review.
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
         with:
-          version: v3.22.0
+          version: v4.3.0
       - name: Resolve dependencies
         # `helm dependency build` resolves Chart.lock against the local repo
         # list, so the upstream repo has to be registered first even though
