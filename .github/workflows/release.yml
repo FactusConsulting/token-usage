@@ -106,7 +106,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "$notes"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: shas
           path: |
@@ -130,7 +130,7 @@ jobs:
           # (it does a separate `git clone --branch gh-pages` itself).
           fetch-depth: 1
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: shas
 
