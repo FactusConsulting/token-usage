@@ -1,6 +1,6 @@
 dependencies:
 - name: langfuse
   repository: https://langfuse.github.io/langfuse-k8s
-  version: 2.1.4
-digest: sha256:d12e0a34e29f94e8c00f94bd291dd0e4f7e096a30591c803ee77c4b8b17f4bbc
-generated: "2026-10-06T13:19:30.47285527Z"
+  version: 2.1.5
+digest: sha256:81289b4c32b5ae1a903a5af5782951bb0fb628c378a8b15ee4b061ddda9e39bc
+generated: "2026-10-12T13:44:34.027891151Z"
