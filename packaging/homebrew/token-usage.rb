@@ -90,6 +90,7 @@ class TokenUsage < Formula
 
       Run manually / one-off backfill from anywhere:
            token-usage --dry-run                 # print, don't send
+           token-usage --self-test               # canary round trip
            token-usage --since-days 300          # backfill 300 days
            token-usage --since 2026-01-01        # backfill from an exact date
 

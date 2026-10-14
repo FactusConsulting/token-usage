@@ -42,8 +42,9 @@ CCUSAGE_SOURCES=claude,codex,openclaw
 Check it, then backfill history if you want:
 
 ```bash
-token-usage --dry-run            # print the batch, don't send
-token-usage --since-days 300     # one-off 300-day backfill
+token-usage --dry-run            # print what would be sent, change nothing
+token-usage --since-days 300     # one-off 300-day backfill (ships only what is missing)
+token-usage --self-test          # round-trip a canary; run after a Langfuse upgrade
 ```
 
 ## Docs
@@ -51,7 +52,7 @@ token-usage --since-days 300     # one-off 300-day backfill
 - **[Setup & scheduling](docs/setup.md)** — per-platform install, the `.env`,
   the timer, backfills, and the Windows + WSL2 two-install pattern.
 - **[Cost & tokens](docs/cost-and-tokens.md)** — how Langfuse computes cost,
-  cache-token pricing, per-source model naming, idempotency.
+  cache-token pricing, per-source model naming, why nothing is sent twice.
 - **[Design & rationale](docs/design.md)** — architecture, data model, why
   Langfuse, repo layout.
 

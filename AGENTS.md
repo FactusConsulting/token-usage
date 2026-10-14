@@ -38,18 +38,24 @@ with distinct hostnames, because Windows and WSL2 keep separate AI-CLI logs.
    project (org `factus-consulting`); the user supplies them — never commit them.
 3. **Verify + backfill**:
    ```
-   token-usage --dry-run          # prints the batch, sends nothing
+   token-usage --dry-run          # prints what would be sent, sends nothing
    token-usage --since-days 300   # one-off backfill of all local history
    ```
 4. **Confirm the timer** is enabled (`TokenUsageCcusageShip` is `Ready`, or
    `brew services list` shows it started). It re-ships the rolling
-   `CCUSAGE_SINCE_DAYS` window hourly, so an offline machine backfills on
-   reconnect.
+   `CCUSAGE_SINCE_DAYS` window hourly against what Langfuse holds, so an
+   offline machine backfills on reconnect.
 
 Cost/accounting is entirely Langfuse-side — the shim only ships raw token
-counts. See `docs/cost-and-tokens.md`. Note: re-importing cannot *remove* a tag
-(Langfuse merges tags on re-ingest); changing the data model needs a deep wipe
-of Langfuse first, not just a re-import.
+counts. See `docs/cost-and-tokens.md`. Langfuse v4 never updates a stored
+record: re-sending an id adds a second row that every sum counts. The shim
+therefore ships only the difference against what Langfuse holds, and changing
+what is already stored (tags, usage keys) means `token-usage --reship`, which
+deletes and re-sends.
+
+Langfuse upgrades: run `token-usage --self-test` afterwards. The OTel attribute
+names the shim sends are Langfuse's to change, and a renamed one is dropped
+silently.
 
 ## What lives here vs. what does NOT
 
@@ -89,8 +95,10 @@ and version bumps; everything else goes through review.
 
 The shim has `pytest` coverage in `shim/test_ccusage_ship.py` (run with the
 install's venv python, or any Python with `requests`), wired into CI via
-`.github/workflows/test.yml`. It guards the Langfuse batch format —
-`usageDetails`/no-`costDetails`, ids, native fields, and `_project_label`. The
+`.github/workflows/test.yml`. It guards the span attributes —
+`usageDetails`/no cost, ids, native fields, `_project_label` — and the
+comparison with what Langfuse holds (only the difference ships, legacy and
+duplicate rows count once). The
 installers have no automated tests yet; validate those manually on each target
 OS before merging.
 

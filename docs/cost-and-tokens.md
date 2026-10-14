@@ -29,28 +29,55 @@ What that means for the numbers on the dashboard:
 By default the shim ships at **session** granularity. For each ccusage session
 it emits:
 
-- **one trace** — id `ccusage-<host>-<source>-sess-<sessionId>`, mapped onto
+- **one trace** — its OTel trace id is derived from the key
+  `ccusage-<host>-<source>-sess-<sessionId>`, and it is mapped onto
   Langfuse's first-class fields: `userId` = `<host>`, `sessionId` =
   `<sessionId>`, name = `ccusage:<source>`. The only tag is
   `project:<basename>` — a machine-independent label, so the same project
   unifies across machines; the full path stays in `metadata`.
-- **one generation per model** — id `<trace-id>-gen-<model>`, carrying that
-  model's token counts in Langfuse v3 **`usageDetails`**.
+- **generations per model**, carrying that model's token counts in
+  **`usageDetails`**. On Langfuse v4 user, session, trace name, tags and
+  metadata are set on every generation, not only on the trace: v4 queries
+  observations directly.
 
 `<host>` is `TOKEN_USAGE_HOSTNAME` (or `socket.gethostname()`), `<source>` is a
 ccusage source (claude, codex, …), `<model>` is the real model name. Set
 `CCUSAGE_GRANULARITY=daily` for one trace per calendar day instead
 (`ccusage-<host>-<source>-<date>`, no sessionId/project).
 
-Because the ids are **deterministic** (no timestamp), Langfuse **upserts** on
-re-send: the hourly timer re-shipping the same sessions never duplicates, it
-just refreshes the same records.
+### Nothing is ever sent twice
 
-> Re-tagging caveat: Langfuse is event-sourced (every event is a blob in its
-> MinIO store) and **merges** trace tags across re-ingests of the same id.
-> Re-importing therefore cannot *remove* an old tag — changing the tag scheme
-> needs a deep wipe (empty the MinIO bucket + truncate ClickHouse) first. This
-> only bites when you change the data model, never during normal imports.
+Langfuse v4 stores observations append-only. A record re-sent with the same id
+is not an update but a second row, and every sum counts both — so the v3-era
+upsert (re-sending each session's running total every hour) would double the
+numbers. Each run instead asks Langfuse what it holds for this host
+(Observations API v2), compares that with what ccusage reports now, and ships
+only the difference per session and model as one more generation in the same
+trace, dated from where the last one ended. A session used over three days is
+therefore several generations whose tokens add up to ccusage's totals.
+
+Langfuse is the only state. A wider window, a reinstall, or a second machine
+backfilling never duplicates: whatever Langfuse already holds is subtracted
+first. A per-user lock keeps two runs on one machine from shipping the same gap.
+
+What cannot be expressed as an addition — Langfuse holding more than ccusage
+reports, or data shipped with a wrong usage key or price — needs `--reship`: it
+deletes the traces of every session in the window that ccusage still has, waits
+until Langfuse confirms the deletion, and ships those sessions in full.
+Sessions no longer in the local logs are never deleted.
+
+### Traces from the pre-v4 shim
+
+Earlier versions wrote through the legacy ingestion API, under readable trace
+ids (`ccusage-…`). Langfuse's dual write copies those into the v4 tables
+incompletely (most rows lose their user, session and name), so the comparison
+ignores them. Instead, every run first moves its host's legacy traces over:
+reads them from the v3 API, ships what the v4 data does not hold yet as OTel
+generations, waits until Langfuse returns them, then deletes the legacy traces.
+This needs the v3 API, which exists only while the server runs the `dual` (or
+`legacy`) write mode — so every machine must have run this version once before
+the server is switched to `events_only`. A machine that no longer runs
+token-usage is moved with `token-usage --migrate-host <host>` from any machine.
 
 ## Cost is computed by Langfuse, not ccusage
 
@@ -72,8 +99,8 @@ Why let Langfuse price instead of forwarding ccusage's cost:
 
 Trade-off to be aware of: a price that is **missing at ingestion** yields `0`,
 and adding it later does **not** retroactively recompute stored observations —
-re-ship those days (idempotent) to apply the new price. The rolling hourly
-window self-heals recent days.
+re-ship those sessions with `token-usage --reship --since …` to apply the new
+price.
 
 ## Token caching is input-side
 
@@ -146,5 +173,6 @@ is genuinely distinct, not duplicated — provided WSL2's ccusage reads its own
 `CCUSAGE_SINCE_DAYS` controls how many days back each run ships (default 14).
 For a one-off backfill use the flag: `token-usage --since-days 300` (or
 `--since 2026-01-01`). ccusage only has whatever history is in the machine's
-local logs, so a wide window just ships everything available; missing days
-simply ship `0`. Re-running is safe (idempotent, see above).
+local logs, so a wide window just ships everything available that Langfuse
+does not hold yet. Re-running is safe: only the difference is ever shipped (see
+above).

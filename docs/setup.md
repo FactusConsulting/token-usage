@@ -88,14 +88,16 @@ TOKEN_USAGE_HOSTNAME=my-desktop-wsl     # see "One machine, two installs" below
 Verify before scheduling:
 
 ```bash
-token-usage --dry-run                   # print the batch, don't send
+token-usage --dry-run                   # print what would be sent, change nothing
+token-usage --self-test                 # canary round trip through Langfuse
 ```
 
 ## Running & backfilling
 
-The timer ships a rolling `CCUSAGE_SINCE_DAYS` window each run (idempotent —
-re-shipping a day upserts, never duplicates). A wider window backfills gaps if
-the machine was offline; the default 14 covers a week or two of downtime.
+Each run compares a rolling `CCUSAGE_SINCE_DAYS` window with what Langfuse
+already holds and ships only the difference, so nothing is ever sent twice. A
+wider window backfills gaps if the machine was offline; the default 14 covers a
+week or two of downtime.
 
 For a one-off historical backfill:
 
@@ -105,7 +107,16 @@ token-usage --since 2026-01-01          # from an exact date
 ```
 
 ccusage only has whatever history is in the machine's local logs, so a wide
-window just ships everything available; days with no data ship nothing.
+window just ships everything available that Langfuse does not hold yet.
+
+To correct data already in Langfuse (a pricing or usage-key fix), delete and
+re-send the window's sessions:
+
+```bash
+token-usage --reship --since 2026-06-01
+```
+
+Only sessions still in the local logs are deleted and re-sent.
 
 ## One machine, two installs (Windows + WSL2)
 
