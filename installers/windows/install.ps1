@@ -55,6 +55,25 @@ if (-not $nodeCmd) {
     Write-Host "[install] node already present: $($nodeCmd.Source)"
 }
 
+# npm is the one that ships beside the node on PATH. A version manager can leave
+# node without it (nvm-windows recreating a version folder that holds only
+# node.exe), and Chocolatey's process may not have npm's directory on PATH even
+# when it exists - so look next to node before giving up, and say which node
+# is broken instead of failing on a bare "npm is not recognized".
+$npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+if ($npmCmd) {
+    $npm = $npmCmd.Source
+} else {
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    $npm = if ($node) { Join-Path (Split-Path $node) 'npm.cmd' }
+    if (-not $npm -or -not (Test-Path $npm)) {
+        throw ("npm not found: the node on PATH ($node) has no npm beside it. " +
+               "Repair that Node install (with nvm-windows: 'nvm install <version>' " +
+               "then 'nvm use <version>' from an elevated shell), then re-run.")
+    }
+}
+Write-Host "[install] npm: $npm"
+
 # 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
 # Packagers (choco / brew / nix) all read this same file, so a single bump
 # propagates everywhere.
@@ -62,10 +81,13 @@ $ccusageVersionFile = Join-Path $RepoRoot 'CCUSAGE_VERSION'
 if (Test-Path $ccusageVersionFile) {
     $ccusageVersion = (Get-Content -Raw $ccusageVersionFile).Trim()
     Write-Host "[install] (re)installing ccusage@$ccusageVersion globally via npm..."
-    & npm install -g "ccusage@$ccusageVersion" | Out-Host
+    & $npm install -g "ccusage@$ccusageVersion" | Out-Host
 } else {
     Write-Host "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
-    & npm install -g ccusage | Out-Host
+    & $npm install -g ccusage | Out-Host
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "npm install -g ccusage failed (exit $LASTEXITCODE); see the output above."
 }
 
 # 3. Shim files.
