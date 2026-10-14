@@ -739,10 +739,10 @@ def _migrate_legacy(host_url: str, auth: tuple[str, str], host: str,
     if not units:
         return []
     from_start = _window_start(units, "9999-12-31")
-    spans, warnings = _plan(units, _shipped(
+    # Warnings are expected and dropped: a session that grew after the
+    # pre-v4 shim's last run holds more on OTel than its legacy snapshot.
+    spans, _ = _plan(units, _shipped(
         _iter_observations(host_url, auth, host, from_start)))
-    for w in warnings:
-        sys.stderr.write(f"[ccusage-ship] migrate: {w}\n")
     doomed = sorted(u["legacy_trace_id"] for u in units)
     if dry_run:
         print(json.dumps({"migrate_delete_legacy_traces": doomed,
