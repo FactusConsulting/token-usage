@@ -74,6 +74,20 @@ if ($npmCmd) {
 }
 Write-Host "[install] npm: $npm"
 
+# npm and pip write notices (an available update, a deprecation) to stderr. Under
+# ErrorActionPreference=Stop, Windows PowerShell turns any native stderr line into a
+# terminating error - so a successful install would abort on "npm notice". Run them
+# with Continue and judge by the exit code instead.
+function Invoke-Native([string]$What, [scriptblock]$Command) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command 2>&1 | ForEach-Object { "$_" } | Out-Host }
+    finally { $ErrorActionPreference = $saved }
+    if ($LASTEXITCODE -ne 0) {
+        throw "$What failed (exit $LASTEXITCODE); see the output above."
+    }
+}
+
 # 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
 # Packagers (choco / brew / nix) all read this same file, so a single bump
 # propagates everywhere.
@@ -81,13 +95,10 @@ $ccusageVersionFile = Join-Path $RepoRoot 'CCUSAGE_VERSION'
 if (Test-Path $ccusageVersionFile) {
     $ccusageVersion = (Get-Content -Raw $ccusageVersionFile).Trim()
     Write-Host "[install] (re)installing ccusage@$ccusageVersion globally via npm..."
-    & $npm install -g "ccusage@$ccusageVersion" | Out-Host
+    Invoke-Native 'npm install -g ccusage' { & $npm install -g "ccusage@$ccusageVersion" --no-fund --no-audit }
 } else {
     Write-Host "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
-    & $npm install -g ccusage | Out-Host
-}
-if ($LASTEXITCODE -ne 0) {
-    throw "npm install -g ccusage failed (exit $LASTEXITCODE); see the output above."
+    Invoke-Native 'npm install -g ccusage' { & $npm install -g ccusage --no-fund --no-audit }
 }
 
 # 3. Shim files.
@@ -116,8 +127,8 @@ if (-not (Test-Path (Join-Path $venvDir 'Scripts\python.exe'))) {
 }
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 $venvPythonw = Join-Path $venvDir 'Scripts\pythonw.exe'
-& $venvPython -m pip install --upgrade pip | Out-Host
-& $venvPython -m pip install -r $reqFile | Out-Host
+Invoke-Native 'pip install --upgrade pip' { & $venvPython -m pip install --upgrade pip }
+Invoke-Native 'pip install -r requirements.txt' { & $venvPython -m pip install -r $reqFile }
 
 # 5. Windowless launcher. A .pyw run by the venv's pythonw.exe leaves no console
 # window when the Scheduled Task fires (a .cmd or python.exe would flash one
