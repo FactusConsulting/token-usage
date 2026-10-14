@@ -7,15 +7,16 @@
 [PC B — WSL2]        ccusage daily        ┌─────────────────────────┐
 [PC C — Ubuntu]      --json --since=…     │  Langfuse               │
        │                                  │  (HelmRelease in        │
-       │  HTTPS POST                      │   flux-home repo)       │
-       │  /api/public/ingestion           │                         │
+       │  OTLP/HTTP JSON                  │   flux-home repo)       │
+       │  /api/public/otel/v1/traces      │                         │
        └──────────►  langfuse.lwa.dk ────► │  Postgres + ClickHouse  │
                      (or langfuse.factus.dk) │  + MinIO + Redis      │
                                           └─────────────────────────┘
 ```
 
-Each machine runs `ccusage` locally to read its own AI-tool session logs and
-POSTs the aggregated daily numbers to Langfuse. Nothing leaves the machine
+Each machine runs `ccusage` locally to read its own AI-tool session logs, asks
+Langfuse (Observations API v2) what it already holds for the machine, and
+sends the difference as OpenTelemetry spans. Nothing leaves the machine
 except the daily token/cost aggregates.
 
 ## Data model
@@ -29,11 +30,13 @@ per-request data). By default the shim maps each ccusage **session** to:
   session (Sessions view), `name` = `ccusage:<source>`. The only tag is the
   project (a machine-independent basename, so the same project unifies across
   machines); the full project path stays in metadata.
-- **one generation per model**, carrying token counts in Langfuse v3
-  `usageDetails` (input / output / cache-creation / cache-read).
+- **generations per model**, carrying token counts in `usageDetails`
+  (input / output / cache-creation / cache-read). Each run adds one for
+  whatever the session gained since the last.
 
 Cost is left to Langfuse to compute from those token counts × its dated model
-pricing. Ids are deterministic, so re-running upserts instead of duplicating.
+pricing. Langfuse v4 never updates a record, so nothing is re-sent: each run
+ships only what Langfuse does not hold yet.
 `CCUSAGE_GRANULARITY=daily` switches to one trace per calendar day instead. The
 full details — cache-token pricing, per-source model naming, multi-machine
 hostnames — are in [cost-and-tokens.md](cost-and-tokens.md).
@@ -57,8 +60,8 @@ half-empty observation per day per source.
 
 | Path | Purpose |
 | :--- | :--- |
-| `shim/ccusage-ship.py` | The shim. Reads `ccusage <source> daily --json` for each configured source and POSTs to Langfuse. Idempotent. |
-| `shim/test_ccusage_ship.py` | Tests guarding the Langfuse batch format (usageDetails, model naming, ids, tags). |
+| `shim/ccusage-ship.py` | The shim. Reads `ccusage <source> session --json` for each configured source and ships what Langfuse does not hold yet. |
+| `shim/test_ccusage_ship.py` | Tests guarding the span attributes (usageDetails, model naming, ids, tags) and the difference against what Langfuse holds. |
 | `shim/.env.example` | Config template. |
 | `installers/windows/install.ps1` | Clone-based Windows install (also run by the Chocolatey package): shim + Scheduled Task. |
 | `installers/ubuntu/install.sh` | Clone-based Linux/WSL2 install: shim + systemd user timer. |
