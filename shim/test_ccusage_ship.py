@@ -376,5 +376,32 @@ def test_heartbeat_pings_url_and_swallows_errors(monkeypatch):
     ship._ping_heartbeat("https://hc.example/abc")  # must not raise
 
 
+
+# --- --version -----------------------------------------------------------------
+
+def test_version_needs_no_configuration(monkeypatch, capsys):
+    for name in ship.REQUIRED_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(ship, "_ccusage_exe", lambda: "/bin/ccusage")
+    monkeypatch.setattr(ship.subprocess, "run", lambda *a, **k: type(
+        "R", (), {"returncode": 0, "stdout": "ccusage 20.0.32\n"})())
+    assert ship.main(["--version"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"token-usage {ship.__version__}", "ccusage 20.0.32 (/bin/ccusage)"]
+
+
+def test_version_reports_a_missing_ccusage(monkeypatch):
+    def _missing():
+        raise FileNotFoundError("ccusage not found")
+    monkeypatch.setattr(ship, "_ccusage_exe", _missing)
+    assert ship._versions().endswith("ccusage not found on PATH")
+
+
+def test_release_stamp_matches_the_source_placeholder():
+    """release.yml rewrites exactly this line; if it is reworded, the release
+    fails rather than ship a package that calls itself "dev"."""
+    src = (Path(__file__).parent / "ccusage-ship.py").read_text()
+    assert '\n__version__ = "dev"\n' in src
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

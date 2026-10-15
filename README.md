@@ -45,6 +45,7 @@ Check it, then backfill history if you want:
 token-usage --dry-run            # print what would be sent, change nothing
 token-usage --since-days 300     # one-off 300-day backfill (ships only what is missing)
 token-usage --self-test          # round-trip a canary; run after a Langfuse upgrade
+token-usage --version            # this version and the ccusage it runs
 ```
 
 ## Docs

@@ -75,6 +75,13 @@ jobs:
           # has a predictable name (homebrew + choco install scripts both
           # assume <name>-<version>/ as the unpacked tree).
           git archive --format=tar --prefix="${name}/" HEAD | tar -xf -
+          # The shim reports its version (`token-usage --version`); the source
+          # says "dev" and every package is built from this export, so stamp it
+          # here - and fail rather than ship a package that misreports itself.
+          shim="${name}/shim/ccusage-ship.py"
+          sed -i "s/^__version__ = \"dev\"$/__version__ = \"${VERSION}\"/" "$shim"
+          grep -qx "__version__ = \"${VERSION}\"" "$shim" || {
+            echo "::error::could not stamp __version__ into $shim"; exit 1; }
           tar -czf "${name}.tar.gz" "${name}"
           (cd "${name}" && zip -qr "../${name}.zip" .)
           sha_tar=$(sha256sum "${name}.tar.gz" | cut -d' ' -f1)
