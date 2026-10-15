@@ -38,6 +38,7 @@ CLI flags (all optional; without them the env-var defaults apply):
                           CCUSAGE_GRANULARITY
     --reship              delete and re-send the window's sessions in full
     --dry-run             print what would be sent/deleted, change nothing
+    --version             print the token-usage and ccusage versions
     --self-test           send a canary trace, read it back, check every
                           field mapped, delete it (run after a Langfuse
                           upgrade: the OTel attribute names are Langfuse's)
@@ -89,7 +90,9 @@ from typing import Any, Iterator
 
 import requests
 
-__version__ = "0.2.0"
+# Stamped with the release tag by .github/workflows/release.yml; a checkout says
+# "dev".
+__version__ = "dev"
 
 REQUIRED_ENV = ("LANGFUSE_HOST", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
                 "CCUSAGE_SOURCES")
@@ -842,6 +845,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
              "does this for its own host; this is for machines that no "
              "longer run token-usage.")
     p.add_argument(
+        "--version", action="store_true",
+        help="Print the token-usage version and the ccusage it runs, then "
+             "exit. Needs no configuration.")
+    p.add_argument(
         "--self-test", action="store_true",
         help="Send a canary trace under a throwaway host, read it back, "
              "check every field Langfuse mapped, and delete it. Run after "
@@ -851,6 +858,26 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Print what would be shipped (and deleted) and change nothing "
              "(same as TOKEN_USAGE_DRY_RUN=1).")
     return p.parse_args(argv)
+
+
+def _versions() -> str:
+    """This shim's version and the ccusage it would run. The ccusage half is
+    what tells a working install from one whose Node lost its global
+    packages."""
+    try:
+        exe = _ccusage_exe()
+    except FileNotFoundError:
+        return f"token-usage {__version__}\nccusage not found on PATH"
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True,
+                             text=True, timeout=60, creationflags=_NO_WINDOW)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return f"token-usage {__version__}\nccusage {exe}: {exc}"
+    if out.returncode != 0:
+        return (f"token-usage {__version__}\n"
+                f"ccusage {exe}: exited {out.returncode}")
+    version = (out.stdout.split() or ["?"])[-1]
+    return f"token-usage {__version__}\nccusage {version} ({exe})"
 
 
 def _ping_heartbeat(url: str) -> None:
@@ -990,6 +1017,9 @@ def _run_source(source: str, rows: list[dict[str, Any]], *, host: str,
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+    if args.version:
+        print(_versions())
+        return 0
     _load_dotenv_best_effort()
     langfuse, pk, sk, sources = _require_env()
     dry_run = args.dry_run or os.environ.get("TOKEN_USAGE_DRY_RUN") == "1"
