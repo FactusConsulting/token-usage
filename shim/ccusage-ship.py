@@ -860,6 +860,48 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+class _Timestamped:
+    """stderr with the local time at the start of every line.
+
+    The Windows Scheduled Task and the clone-based Linux timer append the
+    shim's output to ship.log, where hourly runs are otherwise
+    indistinguishable. A terminal and journald (which stamps lines itself and
+    announces itself through JOURNAL_STREAM) get the lines unchanged."""
+
+    def __init__(self, stream: Any) -> None:
+        self.stream = stream
+        self.at_line_start = True
+
+    def write(self, text: str) -> int:
+        out = []
+        for chunk in text.splitlines(keepends=True):
+            if self.at_line_start:
+                out.append(datetime.now().astimezone()
+                           .strftime("%Y-%m-%d %H:%M:%S%z "))
+            out.append(chunk)
+            self.at_line_start = chunk.endswith("\n")
+        self.stream.write("".join(out))
+        return len(text)
+
+    def flush(self) -> None:
+        self.stream.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.stream, name)
+
+
+def _stamp_stderr() -> None:
+    stream = sys.stderr
+    if stream is None or os.environ.get("JOURNAL_STREAM"):
+        return
+    try:
+        if stream.isatty():
+            return
+    except (AttributeError, ValueError):
+        pass
+    sys.stderr = _Timestamped(stream)
+
+
 def _versions() -> str:
     """This shim's version and the ccusage it would run. The ccusage half is
     what tells a working install from one whose Node lost its global
@@ -1017,6 +1059,7 @@ def _run_source(source: str, rows: list[dict[str, Any]], *, host: str,
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+    _stamp_stderr()
     if args.version:
         print(_versions())
         return 0
