@@ -403,5 +403,43 @@ def test_release_stamp_matches_the_source_placeholder():
     src = (Path(__file__).parent / "ccusage-ship.py").read_text()
     assert '\n__version__ = "dev"\n' in src
 
+
+# --- timestamps in a log file ---------------------------------------------------
+
+def test_log_lines_are_timestamped_once_each():
+    import io
+    buf = io.StringIO()
+    out = ship._Timestamped(buf)
+    out.write("[ccusage-ship] a\n[ccusage-ship] b")
+    out.write(" continued\n")
+    lines = buf.getvalue().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        stamp, _, rest = line.partition(" [")
+        ship.datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S%z")
+        assert rest.startswith("ccusage-ship]")
+    assert lines[1].endswith("b continued")
+
+
+def test_journald_and_terminals_are_not_stamped(monkeypatch):
+    class _Tty:
+        def isatty(self):
+            return True
+    monkeypatch.setattr(ship.sys, "stderr", _Tty())
+    ship._stamp_stderr()
+    assert not isinstance(ship.sys.stderr, ship._Timestamped)
+
+    class _File:
+        def isatty(self):
+            return False
+    monkeypatch.setenv("JOURNAL_STREAM", "8:12345")
+    monkeypatch.setattr(ship.sys, "stderr", _File())
+    ship._stamp_stderr()
+    assert not isinstance(ship.sys.stderr, ship._Timestamped)
+
+    monkeypatch.delenv("JOURNAL_STREAM")
+    ship._stamp_stderr()
+    assert isinstance(ship.sys.stderr, ship._Timestamped)
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
