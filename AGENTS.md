@@ -29,7 +29,7 @@ with distinct hostnames, because Windows and WSL2 keep separate AI-CLI logs.
    LANGFUSE_HOST=https://langfuse.lwa.dk     # langfuse.factus.dk when off-LAN
    LANGFUSE_PUBLIC_KEY=pk-lf-...             # from the Langfuse project settings
    LANGFUSE_SECRET_KEY=sk-lf-...
-   CCUSAGE_SOURCES=claude,codex             # add pi/copilot/gemini if used
+   CCUSAGE_SOURCES=claude,codex             # add pi/omp/copilot/gemini if used
    TOKEN_USAGE_HOSTNAME=<machine>-windows   # MUST be unique per OS install
    # CCUSAGE_GRANULARITY=session            # default; `daily` also supported
    # CCUSAGE_SINCE_DAYS=14                  # rolling window the timer ships

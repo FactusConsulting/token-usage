@@ -149,6 +149,13 @@ uses that real model name so Langfuse can price it — a generic label like
 source is still preserved as the trace name (`ccusage:codex`), so you can filter
 by source while the model is priced correctly as `gpt-5.5`.
 
+`ccusage pi` labels every model `[pi] <id>`, and Langfuse matches no price
+definition against the label, so it shows cost `0`. The `omp` source (OMP
+sessions read through `ccusage pi --pi-path`) therefore ships the bare id —
+`claude-opus-5-5`, priced like the same model from claude. The `pi` source keeps
+the label: its data in Langfuse is stored under it, and a renamed model would
+be shipped a second time.
+
 ## Multiple machines
 
 Each machine should set a distinct `TOKEN_USAGE_HOSTNAME` (e.g.

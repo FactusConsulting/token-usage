@@ -49,7 +49,9 @@ Env vars:
     LANGFUSE_PUBLIC_KEY    pk-lf-...                     (required)
     LANGFUSE_SECRET_KEY    sk-lf-...                     (required)
     CCUSAGE_SOURCES        comma-separated list, e.g.
-                           "claude,codex,openclaw,copilot,gemini" (required)
+                           "claude,codex,openclaw,copilot,gemini" (required).
+                           Besides ccusage's own sources, "omp" reads OMP
+                           (oh-my-pi) sessions from ~/.omp/agent/sessions.
     CCUSAGE_SINCE_DAYS     how many days back each run compares. Default 14 —
                            wide enough that a machine offline for a week or
                            two backfills the gap on its next run.
@@ -195,6 +197,22 @@ def _ccusage_exe() -> str:
     return exe
 
 
+# OMP (oh-my-pi) writes pi-agent's session format under its own tree, which
+# ccusage has no source for; `ccusage pi --pi-path` reads it. Shipping it as
+# its own source keeps it apart from pi in Langfuse.
+_OMP_SESSIONS = Path.home() / ".omp" / "agent" / "sessions"
+
+# The label `ccusage pi` puts in front of every model name.
+_PI_MODEL_LABEL = "[pi] "
+
+
+def _ccusage_args(source: str, granularity: str, since: str) -> list[str]:
+    if source == "omp":
+        return ["pi", granularity, "--json", "--since", since,
+                "--pi-path", str(_OMP_SESSIONS)]
+    return [source, granularity, "--json", "--since", since]
+
+
 def _ccusage_rows(source: str, since: str,
                   granularity: str) -> list[dict[str, Any]]:
     """Run `ccusage <source> <granularity> --json --since <since>` and return
@@ -202,7 +220,7 @@ def _ccusage_rows(source: str, since: str,
     CalledProcessError on a non-zero exit so the caller can decide whether to
     fail the whole run or just skip this source."""
     out = subprocess.check_output(
-        [_ccusage_exe(), source, granularity, "--json", "--since", since],
+        [_ccusage_exe(), *_ccusage_args(source, granularity, since)],
         text=True,
         creationflags=_NO_WINDOW,
     )
@@ -359,7 +377,7 @@ def _units(rows: list[dict[str, Any]], host: str, source: str,
             tags = [f"project:{label}"] if label else []
         models: dict[str, dict[str, int]] = {}
         for bd in _model_breakdowns(row, source):
-            model = bd.get("modelName") or "unknown"
+            model = _model_name(source, bd.get("modelName"))
             counts = models.setdefault(model, dict.fromkeys(TOKEN_FIELDS, 0))
             for f in TOKEN_FIELDS:
                 counts[f] += int(bd.get(f) or 0)
@@ -370,6 +388,18 @@ def _units(rows: list[dict[str, Any]], host: str, source: str,
             "tags": tags, "metadata": metadata, "models": models,
         })
     return units
+
+
+def _model_name(source: str, name: str | None) -> str:
+    """The model name a generation is shipped under. Langfuse prices it by
+    matching the bare id ("claude-opus-5-5"), so omp drops the "[pi] " label
+    `ccusage pi` adds. pi keeps it: its data in Langfuse is stored under the
+    labelled name, and a renamed model would be shipped a second time."""
+    if not name:
+        return "unknown"
+    if source == "omp" and name.startswith(_PI_MODEL_LABEL):
+        return name[len(_PI_MODEL_LABEL):]
+    return name
 
 
 # --- what Langfuse already holds --------------------------------------------

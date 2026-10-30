@@ -138,9 +138,14 @@ WSL2's ccusage reads its own `~/.claude`, not the Windows logs via `/mnt/c`.
 
 ## Tuning `CCUSAGE_SOURCES`
 
-Default is `claude,codex,openclaw,pi,copilot,gemini`. Trim per machine to the sources you
+Default is `claude,codex,openclaw,pi,omp,copilot,gemini`. Trim per machine to the sources you
 actually use — including ones that generate zero local data just adds empty
 runs. See the [ccusage docs](https://ccusage.com/) for the full source list.
+
+`omp` is the one source ccusage does not have: OMP (oh-my-pi) writes pi-agent's
+session format to `~/.omp/agent/sessions`, which the shim reads with
+`ccusage pi --pi-path`. It ships as its own trace name (`ccusage:omp`), separate
+from `pi`, with the model names unlabelled so Langfuse can price them.
 
 ## Monitoring — know when shipping breaks
 
