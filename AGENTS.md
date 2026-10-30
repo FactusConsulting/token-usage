@@ -29,7 +29,7 @@ with distinct hostnames, because Windows and WSL2 keep separate AI-CLI logs.
    LANGFUSE_HOST=https://langfuse.lwa.dk     # langfuse.factus.dk when off-LAN
    LANGFUSE_PUBLIC_KEY=pk-lf-...             # from the Langfuse project settings
    LANGFUSE_SECRET_KEY=sk-lf-...
-   CCUSAGE_SOURCES=claude,codex             # add pi/copilot/gemini if used
+   CCUSAGE_SOURCES=claude,codex             # add pi/omp/copilot/gemini if used
    TOKEN_USAGE_HOSTNAME=<machine>-windows   # MUST be unique per OS install
    # CCUSAGE_GRANULARITY=session            # default; `daily` also supported
    # CCUSAGE_SINCE_DAYS=14                  # rolling window the timer ships
@@ -98,7 +98,8 @@ install's venv python, or any Python with `requests`), wired into CI via
 `.github/workflows/test.yml`. It guards the span attributes —
 `usageDetails`/no cost, ids, native fields, `_project_label` — and the
 comparison with what Langfuse holds (only the difference ships, legacy and
-duplicate rows count once). The
+duplicate rows count once). The same workflow runs `nix flake check` and
+`nix run . -- --version` against the committed `flake.lock`. The
 installers have no automated tests yet; validate those manually on each target
 OS before merging.
 

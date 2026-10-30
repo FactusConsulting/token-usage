@@ -26,6 +26,24 @@ jobs:
       - name: Run tests
         run: python -m pytest shim/ -v
 
+  nix:
+    name: nix flake (check + run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Pinned to a commit SHA: a mutable tag on a third-party action can be
+      # repointed at arbitrary code after review.
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      # flake.lock must be committed and current: without it current Nix
+      # refuses `nix run github:FactusConsulting/token-usage` outright, because
+      # it cannot write the lock into a remote flake.
+      - name: Check (lock file must be current)
+        run: nix flake check --no-update-lock-file
+      # Runs the wrapper end to end: the shim on the Nix python, and the pinned
+      # ccusage fetched and started on the Nix node.
+      - name: Run
+        run: nix run . -- --version
+
   chart:
     name: langfuse-stack chart (lint + guards)
     runs-on: ubuntu-latest

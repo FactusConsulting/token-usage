@@ -162,6 +162,19 @@ def test_falls_back_to_source_when_no_model_name_anywhere():
     assert spans[0]["model"] == "mystery"
 
 
+@pytest.mark.parametrize("source,expected", [
+    # Langfuse matches its price table on the bare id; a labelled name is $0.
+    ("omp", "claude-opus-5-5"),
+    # pi's data is stored under the labelled name; renaming would re-ship it.
+    ("pi", "[pi] claude-opus-5-5"),
+])
+def test_omp_ships_the_bare_model_id_pi_keeps_its_label(source, expected):
+    row = _session_row()
+    row["modelBreakdowns"][0]["modelName"] = "[pi] claude-opus-5-5"
+    spans, _ = _spans([row], source=source)
+    assert spans[0]["model"] == expected
+
+
 @pytest.mark.parametrize("model,expected", [
     ("claude-opus-5", "cache_read_input_tokens"),
     ("claude-haiku-4-5-20251001", "cache_read_input_tokens"),
