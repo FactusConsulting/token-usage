@@ -8,7 +8,7 @@ on:
 jobs:
   shim:
     name: shim format tests (pytest)
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-public
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -28,9 +28,12 @@ jobs:
 
   nix:
     name: nix flake (check + run)
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-public
     steps:
       - uses: actions/checkout@v7
+      - name: Install xz
+        # The Nix installer unpacks an .xz tarball; the ARC runner image has no xz.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xz-utils
       # Pinned to a commit SHA: a mutable tag on a third-party action can be
       # repointed at arbitrary code after review.
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
@@ -46,12 +49,15 @@ jobs:
 
   chart:
     name: langfuse-stack chart (lint + guards)
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-public
     env:
       CHART: charts/langfuse-stack
       VALUES: charts/langfuse-stack/ci/test-values.yaml
     steps:
       - uses: actions/checkout@v7
+      - name: Install PyYAML
+        # The PVC assertion below imports yaml; the ARC runner image has python3 only.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml
       # Pinned to a commit SHA: a mutable tag on a third-party action can be
       # repointed at arbitrary code after review.
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5

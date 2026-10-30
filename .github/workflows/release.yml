@@ -5,7 +5,6 @@ name: release
 #
 # Jobs:
 #   build-tarball     — pack source, sha256, attach to GitHub Release
-#   publish-chocolatey — substitute placeholders, choco pack + push to public Sleet feed
 #   publish-homebrew  — substitute placeholders, PR formula into homebrew-tap
 #
 # Nix: no release-time job. Flake users run `nix flake update` against this
@@ -24,7 +23,7 @@ on:
 
 jobs:
   build-tarball:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-public
     permissions:
       contents: write
     outputs:
@@ -33,6 +32,23 @@ jobs:
       asset_zip: ${{ steps.pack.outputs.asset_zip }}
       asset_tar: ${{ steps.pack.outputs.asset_tar }}
     steps:
+      - name: Install zip
+        # The ARC runner image ships without zip.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zip
+
+      - name: Install gh CLI
+        # The ARC runner image ships without the GitHub CLI.
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then exit 0; fi
+          GH_VERSION="2.103.3"
+          curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/gh.tar.gz \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/gh.tar.gz -C /tmp
+          mkdir -p "$HOME/.local/bin"
+          mv "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" "$HOME/.local/bin/gh"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Resolve tag
         id: resolve
         run: |
@@ -72,8 +88,8 @@ jobs:
           set -euo pipefail
           name="token-usage-${VERSION}"
           # Create a clean source export at $name/ so the tar/zip top-level dir
-          # has a predictable name (homebrew + choco install scripts both
-          # assume <name>-<version>/ as the unpacked tree).
+          # has a predictable name (the homebrew formula assumes
+          # <name>-<version>/ as the unpacked tree).
           git archive --format=tar --prefix="${name}/" HEAD | tar -xf -
           # The shim reports its version (`token-usage --version`); the source
           # says "dev" and every package is built from this export, so stamp it
@@ -88,9 +104,10 @@ jobs:
           sha_zip=$(sha256sum "${name}.zip" | cut -d' ' -f1)
           echo "tar.gz sha256: $sha_tar"
           echo "zip    sha256: $sha_zip"
-          # Homebrew consumes .tar.gz; Chocolatey consumes .zip. We expose the
-          # tar.gz sha (used by the homebrew job) as the primary `sha256` output,
-          # and emit the zip sha to a file the chocolatey job reads.
+          # Homebrew consumes .tar.gz. We expose the tar.gz sha (used by the
+          # homebrew job) as the primary `sha256` output; the zip is attached to
+          # the release for manual download and its sha goes to a file in the
+          # `shas` artifact.
           echo "sha256=$sha_tar" >> "$GITHUB_OUTPUT"
           echo "asset_zip=${name}.zip" >> "$GITHUB_OUTPUT"
           echo "asset_tar=${name}.tar.gz" >> "$GITHUB_OUTPUT"
@@ -120,69 +137,28 @@ jobs:
             zip.sha256
             tar.sha256
 
-  publish-chocolatey:
-    needs: build-tarball
-    runs-on: windows-2025
-    # Pushes the .nupkg into a Sleet-managed NuGet feed on this repo's
-    # gh-pages branch. GitHub Pages serves it at:
-    #   https://factusconsulting.github.io/token-usage/chocolatey/index.json
-    # — public, no auth, matches the whisper-dictate pattern.
-    permissions:
-      contents: write  # publish-chocolatey-feed.ps1 commits to gh-pages
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
-          # Sleet's git operations need full history on the gh-pages branch
-          # (it does a separate `git clone --branch gh-pages` itself).
-          fetch-depth: 1
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: shas
-
-      - name: Substitute placeholders + pack
-        id: pack
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = '${{ needs.build-tarball.outputs.version }}'
-          $shaZip  = (Get-Content -Raw zip.sha256).Trim()
-          Write-Host "Substituting __VERSION__=$version __CHECKSUM__=$shaZip"
-
-          $pkgRoot = 'packaging/chocolatey'
-          $nuspec  = Join-Path $pkgRoot 'token-usage.nuspec'
-          $install = Join-Path $pkgRoot 'tools/chocolateyinstall.ps1'
-          $verify  = Join-Path $pkgRoot 'tools/VERIFICATION.txt'
-
-          foreach ($f in @($nuspec, $install, $verify)) {
-            (Get-Content -Raw $f) `
-              -replace '__VERSION__', $version `
-              -replace '__CHECKSUM__', $shaZip `
-              | Set-Content -NoNewline $f
-          }
-
-          choco pack $nuspec --out $pkgRoot
-          $nupkg = Get-ChildItem -Path $pkgRoot -Filter "token-usage.$version.nupkg" | Select-Object -First 1
-          if (-not $nupkg) { throw "choco pack produced no .nupkg" }
-          "package=$($nupkg.FullName)" >> $env:GITHUB_OUTPUT
-
-      - name: Publish to public Chocolatey feed (Sleet → gh-pages)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./scripts/publish-chocolatey-feed.ps1 -PackagePath "${{ steps.pack.outputs.package }}"
-
   publish-homebrew:
     needs: build-tarball
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-public
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Install gh CLI
+        # The ARC runner image ships without the GitHub CLI.
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then exit 0; fi
+          GH_VERSION="2.103.3"
+          curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/gh.tar.gz \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/gh.tar.gz -C /tmp
+          mkdir -p "$HOME/.local/bin"
+          mv "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" "$HOME/.local/bin/gh"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Render formula
         run: |
