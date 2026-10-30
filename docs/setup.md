@@ -53,6 +53,8 @@ nix run github:FactusConsulting/token-usage -- --help
 The flake exposes `packages.default`/`packages.token-usage` (the wrapper),
 `packages.token-usage-shim`, `apps.default`, and a `devShells.default`. Nix has
 no scheduler — wire `token-usage` into your own systemd timer / launchd / cron.
+Its inputs are pinned in the committed `flake.lock`; refresh them with
+`nix flake update` in a PR (CI fails if the lock is missing or stale).
 
 ### From a clone (no package manager)
 

@@ -98,7 +98,8 @@ install's venv python, or any Python with `requests`), wired into CI via
 `.github/workflows/test.yml`. It guards the span attributes —
 `usageDetails`/no cost, ids, native fields, `_project_label` — and the
 comparison with what Langfuse holds (only the difference ships, legacy and
-duplicate rows count once). The
+duplicate rows count once). The same workflow runs `nix flake check` and
+`nix run . -- --version` against the committed `flake.lock`. The
 installers have no automated tests yet; validate those manually on each target
 OS before merging.
 
