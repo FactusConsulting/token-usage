@@ -3,7 +3,7 @@ on:
   pull_request:
 jobs:
   probe:
-    runs-on: arc-runner
+    runs-on: arc-runner-public
     steps:
       - uses: actions/checkout@v7
       - name: Install zip

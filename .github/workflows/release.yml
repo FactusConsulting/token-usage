@@ -24,7 +24,7 @@ on:
 
 jobs:
   build-tarball:
-    runs-on: arc-runner
+    runs-on: arc-runner-public
     permissions:
       contents: write
     outputs:
@@ -193,7 +193,7 @@ jobs:
 
   publish-homebrew:
     needs: build-tarball
-    runs-on: arc-runner
+    runs-on: arc-runner-public
     permissions:
       contents: read
     steps:
