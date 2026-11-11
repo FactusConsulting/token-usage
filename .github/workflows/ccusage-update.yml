@@ -1,0 +1,148 @@
+name: ccusage-update
+
+# Ship every ccusage release as a new token-usage release, on its own.
+#
+# Every hour this checks npm for a newer ccusage. When there is one, it:
+#   1. writes CCUSAGE_VERSION and ccusage.lock.json (URL + sha512 for each
+#      platform's binary),
+#   2. downloads and checks every binary, runs this host's, and runs the shim
+#      tests and the Nix build against the new pin,
+#   3. commits the pin to main, tags the next patch version, and
+#   4. runs release.yml: GitHub Release with the upstream ccusage notes,
+#      Chocolatey feed, Homebrew tap PR. The Nix flake reads the pin directly.
+#
+# The commit goes straight to main. AGENTS.md allows bot commits for version
+# bumps, and step 2 runs the same checks a PR would. A PR opened with
+# GITHUB_TOKEN would not trigger CI anyway. Renovate no longer tracks ccusage:
+# it cannot update the checksums, and its schedule would add delay.
+#
+# If the pin is current but no release carries it (a release failed, or the
+# pin was changed by hand), the next run releases it.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Pin this ccusage version instead of the latest on npm'
+        required: false
+
+concurrency:
+  group: ccusage-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: arc-runner-public
+    permissions:
+      contents: write  # commit the pin, push the tag
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0  # all tags
+
+      - name: Pin latest ccusage
+        id: pin
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/ccusage_pin.py update ${VERSION:+--version "$VERSION"}
+
+      - name: Decide whether to release
+        id: decide
+        run: |
+          set -euo pipefail
+          pinned="$(tr -d '\n' < CCUSAGE_VERSION)"
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
+          released="$(git show "${latest}:CCUSAGE_VERSION" 2>/dev/null | tr -d '\n' || true)"
+          echo "pinned=$pinned; newest release ${latest:-none} ships ${released:-nothing}"
+          if [ "$pinned" != "$released" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to do."
+          fi
+
+      # The checks below run only when there is something to release, so the
+      # hourly no-op stays a few seconds of python.
+      - uses: actions/setup-python@v7
+        if: steps.decide.outputs.release == 'true'
+        with:
+          python-version: "3.15"
+
+      - name: Verify binaries
+        if: steps.decide.outputs.release == 'true'
+        run: python scripts/ccusage_pin.py verify
+
+      - name: Tests
+        if: steps.decide.outputs.release == 'true'
+        # Same pinned, wheel-only install as test.yml.
+        run: |
+          pip install --quiet --only-binary :all: \
+            pytest==9.1.1 \
+            requests==2.34.2 \
+            python-dotenv==1.2.2
+          python -m pytest shim/ scripts/ -q
+
+      - name: Install xz
+        if: steps.decide.outputs.release == 'true'
+        # The Nix installer unpacks an .xz tarball; the ARC runner image has no xz.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xz-utils
+
+      # Pinned to a commit SHA: a mutable tag on a third-party action can be
+      # repointed at arbitrary code after review.
+      - uses: cachix/install-nix-action@91f6a0f59e94dfb2cfed0f4000f36a68ead1d20c # v31.11.4
+        if: steps.decide.outputs.release == 'true'
+
+      - name: Nix build and run against the new pin
+        if: steps.decide.outputs.release == 'true'
+        # ccusage.lock.json may be uncommitted here; Nix ignores untracked
+        # files in a git flake, so stage it first.
+        run: |
+          git add -N ccusage.lock.json
+          nix flake check --no-update-lock-file
+          out="$(nix run . -- --version)"
+          echo "$out"
+          grep -qx "ccusage $(tr -d '\n' < CCUSAGE_VERSION) (.*)" <<< "$out"
+
+      - name: Commit pin to main
+        if: steps.pin.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CCUSAGE_VERSION ccusage.lock.json
+          git commit -m "chore(deps): ccusage ${{ steps.pin.outputs.version }}"
+          # main may have moved while the checks ran.
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Tag next patch
+        id: tag
+        if: steps.decide.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          next="v${major:-0}.${minor:-0}.$(( ${patch:-0} + 1 ))"
+          git tag -a "$next" -m "$next: ccusage $(tr -d '\n' < CCUSAGE_VERSION)"
+          git push origin "refs/tags/$next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: update
+    if: needs.update.outputs.release == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.update.outputs.tag }}
+    secrets: inherit  # HOMEBREW_TAP_TOKEN
+    # A called workflow gets no more than the caller grants. release.yml needs
+    # contents: write for the GitHub Release and the gh-pages feed.
+    permissions:
+      contents: write

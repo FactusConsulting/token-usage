@@ -2,8 +2,8 @@ name: release
 
 # Cut a release by pushing a version tag:
 #   git tag v1.4.0 && git push origin v1.4.0
-# ccusage bumps (CCUSAGE_VERSION) are released automatically: auto-release.yml
-# tags the next patch version and calls this workflow.
+# New ccusage releases are released automatically: ccusage-update.yml pins
+# them, tags the next patch version and calls this workflow.
 #
 # Jobs:
 #   build-tarball     — pack source, sha256, attach to GitHub Release
@@ -23,7 +23,7 @@ on:
       tag:
         description: 'Existing tag to (re)release, e.g. v1.4.0'
         required: true
-  # Called by auto-release.yml after it tags a ccusage bump. A tag pushed with
+  # Called by ccusage-update.yml after it tags a ccusage bump. A tag pushed with
   # GITHUB_TOKEN does not trigger the `push: tags` event above, so the caller
   # invokes this workflow directly instead.
   workflow_call:
@@ -98,7 +98,7 @@ jobs:
           echo "CCUSAGE_VERSION pinned to: $pinned"
           echo "Release tag VERSION:       $VERSION"
           # We do NOT require these to match — the tag is the package version,
-          # CCUSAGE_VERSION is the upstream npm pin. Renovate bumps the latter
+          # CCUSAGE_VERSION is the upstream npm pin. ccusage-update.yml bumps the latter
           # independently.
 
       - name: Pack source tarball + zip

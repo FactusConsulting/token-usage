@@ -46,23 +46,57 @@
           '';
         };
 
-        # Real `ccusage` binary on PATH so the shim's
-        # `subprocess.check_output(["ccusage", ...])` finds it.
-        # Earlier draft used a bash function exported with `export -f` which
-        # is NOT inherited by Python subprocesses (only by other bash
-        # subshells) — Codex caught it. Delegates to npx-with-pinned-version
-        # under the hood.
-        ccusageWrapper = pkgs.writeShellScriptBin "ccusage" ''
-          set -euo pipefail
-          exec ${pkgs.nodejs_20}/bin/npx --yes "ccusage@${ccusageVersion}" "$@"
-        '';
+        # ccusage itself: the static binary upstream publishes per platform as
+        # the npm package @ccusage/ccusage-<platform>, pinned with its sha512
+        # in ccusage.lock.json. No Node, no npx download at run time, and not
+        # nixpkgs' ccusage, which lags upstream by weeks. The flake uses the
+        # exact version every other channel ships. scripts/ccusage_pin.py
+        # writes the lock file.
+        ccusageLock = builtins.fromJSON (builtins.readFile ./ccusage.lock.json);
+        npmPlatform = {
+          x86_64-linux = "linux-x64";
+          aarch64-linux = "linux-arm64";
+          x86_64-darwin = "darwin-x64";
+          aarch64-darwin = "darwin-arm64";
+        }.${system} or (throw "token-usage: no ccusage binary for ${system}");
+        ccusageBinary = ccusageLock.platforms.${npmPlatform};
 
-        # Top-level entry point. Adds ccusage to PATH and runs the shim
-        # console script.
+        ccusage = pkgs.stdenvNoCC.mkDerivation {
+          pname = "ccusage";
+          version = ccusageLock.version;
+          src = pkgs.fetchurl {
+            inherit (ccusageBinary) url;
+            hash = ccusageBinary.integrity;
+          };
+          sourceRoot = "package";
+          # Upstream's release binary: static on Linux, signed on macOS.
+          # Leave it exactly as published.
+          dontStrip = true;
+          dontPatchELF = true;
+          installPhase = ''
+            runHook preInstall
+            install -Dm755 bin/ccusage $out/bin/ccusage
+            runHook postInstall
+          '';
+          doInstallCheck = true;
+          installCheckPhase = ''
+            $out/bin/ccusage --version | grep -qw "${ccusageLock.version}"
+          '';
+          meta = {
+            description = "Usage analysis for AI coding CLIs (pinned upstream binary)";
+            homepage = "https://github.com/ccusage/ccusage";
+            mainProgram = "ccusage";
+          };
+        };
+
+        # Top-level entry point. TOKEN_USAGE_CCUSAGE points the shim at the
+        # pinned ccusage by absolute path, so a different ccusage earlier on
+        # the user's PATH cannot take its place.
         tokenUsage = pkgs.writeShellApplication {
           name = "token-usage";
-          runtimeInputs = [ pkgs.nodejs_20 ccusageWrapper tokenUsageShim ];
+          runtimeInputs = [ ccusage tokenUsageShim ];
           text = ''
+            export TOKEN_USAGE_CCUSAGE=${ccusage}/bin/ccusage
             exec ccusage-ship "$@"
           '';
         };
@@ -70,6 +104,7 @@
         packages.default = tokenUsage;
         packages.token-usage = tokenUsage;
         packages.token-usage-shim = tokenUsageShim;
+        packages.ccusage = ccusage;
 
         apps.default = {
           type = "app";
@@ -81,11 +116,10 @@
             python3
             python3Packages.requests
             python3Packages.python-dotenv
-            nodejs_20
-          ];
+          ] ++ [ ccusage ];
           shellHook = ''
             echo "token-usage dev shell — pinned ccusage version: ${ccusageVersion}"
-            echo "Run ccusage via: npx --yes ccusage@${ccusageVersion} <source> daily --json"
+            echo "ccusage ${ccusageVersion} is on PATH: ccusage <source> session --json"
           '';
         };
       });
