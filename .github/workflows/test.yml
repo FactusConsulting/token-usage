@@ -24,7 +24,7 @@ jobs:
             requests==2.34.2 \
             python-dotenv==1.2.2
       - name: Run tests
-        run: python -m pytest shim/ -v
+        run: python -m pytest shim/ scripts/ -v
 
   nix:
     name: nix flake (check + run)
