@@ -36,7 +36,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xz-utils
       # Pinned to a commit SHA: a mutable tag on a third-party action can be
       # repointed at arbitrary code after review.
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - uses: cachix/install-nix-action@91f6a0f59e94dfb2cfed0f4000f36a68ead1d20c # v31.11.4
       # flake.lock must be committed and current: without it current Nix
       # refuses `nix run github:FactusConsulting/token-usage` outright, because
       # it cannot write the lock into a remote flake.
