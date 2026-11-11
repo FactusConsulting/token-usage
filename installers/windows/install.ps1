@@ -5,8 +5,9 @@
 
 .DESCRIPTION
     Idempotent. Re-running this script reconciles:
-      * Node LTS (via winget, skipped if already installed)
-      * ccusage (npm -g, upgraded to latest)
+      * ccusage: with -CcusagePath (the Chocolatey package passes the binary
+        its ccusage dependency installed) that exact binary; otherwise Node
+        LTS via winget and ccusage via npm -g at the CCUSAGE_VERSION pin
       * shim/ccusage-ship.py copied to %LOCALAPPDATA%\token-usage\
       * Python deps installed into a venv at %LOCALAPPDATA%\token-usage\.venv
       * .env created with placeholder values if missing (user fills it in)
@@ -21,11 +22,17 @@
 .PARAMETER RepoRoot
     Where this repo is checked out. Defaults to the parent of this script's
     parent, so you can run from a fresh `git clone` without arguments.
+
+.PARAMETER CcusagePath
+    Full path of the ccusage executable to run. When given, Node and npm are
+    not touched, and both entry points set TOKEN_USAGE_CCUSAGE to this path,
+    so the shim runs exactly this binary whatever else is on PATH.
 #>
 
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+    [string]$CcusagePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,37 +50,6 @@ if (-not (Test-Path $shimSrc)) {
 Write-Host "[install] target dir: $installDir"
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
-# 1. Node LTS via winget (skipped if already installed).
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-if (-not $nodeCmd) {
-    Write-Host "[install] installing Node.js LTS via winget..."
-    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
-    # winget doesn't refresh PATH for the current session.
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
-                [System.Environment]::GetEnvironmentVariable('Path','User')
-} else {
-    Write-Host "[install] node already present: $($nodeCmd.Source)"
-}
-
-# npm is the one that ships beside the node on PATH. A version manager can leave
-# node without it (nvm-windows recreating a version folder that holds only
-# node.exe), and Chocolatey's process may not have npm's directory on PATH even
-# when it exists - so look next to node before giving up, and say which node
-# is broken instead of failing on a bare "npm is not recognized".
-$npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-if ($npmCmd) {
-    $npm = $npmCmd.Source
-} else {
-    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
-    $npm = if ($node) { Join-Path (Split-Path $node) 'npm.cmd' }
-    if (-not $npm -or -not (Test-Path $npm)) {
-        throw ("npm not found: the node on PATH ($node) has no npm beside it. " +
-               "Repair that Node install (with nvm-windows: 'nvm install <version>' " +
-               "then 'nvm use <version>' from an elevated shell), then re-run.")
-    }
-}
-Write-Host "[install] npm: $npm"
-
 # npm and pip write notices (an available update, a deprecation) to stderr. Under
 # ErrorActionPreference=Stop, Windows PowerShell turns any native stderr line into a
 # terminating error - so a successful install would abort on "npm notice". Run them
@@ -88,17 +64,57 @@ function Invoke-Native([string]$What, [scriptblock]$Command) {
     }
 }
 
-# 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
-# Packagers (choco / brew / nix) all read this same file, so a single bump
-# propagates everywhere.
-$ccusageVersionFile = Join-Path $RepoRoot 'CCUSAGE_VERSION'
-if (Test-Path $ccusageVersionFile) {
-    $ccusageVersion = (Get-Content -Raw $ccusageVersionFile).Trim()
-    Write-Host "[install] (re)installing ccusage@$ccusageVersion globally via npm..."
-    Invoke-Native 'npm install -g ccusage' { & $npm install -g "ccusage@$ccusageVersion" --no-fund --no-audit }
+# 1-2. ccusage.
+if ($CcusagePath) {
+    if (-not (Test-Path -LiteralPath $CcusagePath -PathType Leaf)) {
+        throw "-CcusagePath $CcusagePath does not exist."
+    }
+    $reported = ((& $CcusagePath --version) -split '\s+')[-1]
+    Write-Host "[install] using ccusage $reported at $CcusagePath (Node/npm not needed)"
 } else {
-    Write-Host "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
-    Invoke-Native 'npm install -g ccusage' { & $npm install -g ccusage --no-fund --no-audit }
+    # 1. Node LTS via winget (skipped if already installed).
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $nodeCmd) {
+        Write-Host "[install] installing Node.js LTS via winget..."
+        winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+        # winget doesn't refresh PATH for the current session.
+        $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+                    [System.Environment]::GetEnvironmentVariable('Path','User')
+    } else {
+        Write-Host "[install] node already present: $($nodeCmd.Source)"
+    }
+
+    # npm is the one that ships beside the node on PATH. A version manager can leave
+    # node without it (nvm-windows recreating a version folder that holds only
+    # node.exe), and Chocolatey's process may not have npm's directory on PATH even
+    # when it exists - so look next to node before giving up, and say which node
+    # is broken instead of failing on a bare "npm is not recognized".
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        $npm = $npmCmd.Source
+    } else {
+        $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+        $npm = if ($node) { Join-Path (Split-Path $node) 'npm.cmd' }
+        if (-not $npm -or -not (Test-Path $npm)) {
+            throw ("npm not found: the node on PATH ($node) has no npm beside it. " +
+                   "Repair that Node install (with nvm-windows: 'nvm install <version>' " +
+                   "then 'nvm use <version>' from an elevated shell), then re-run.")
+        }
+    }
+    Write-Host "[install] npm: $npm"
+
+    # 2. ccusage via npm -g, pinned to the version in CCUSAGE_VERSION at repo root.
+    # Packagers (choco / brew / nix) all read this same file, so a single bump
+    # propagates everywhere.
+    $ccusageVersionFile = Join-Path $RepoRoot 'CCUSAGE_VERSION'
+    if (Test-Path $ccusageVersionFile) {
+        $ccusageVersion = (Get-Content -Raw $ccusageVersionFile).Trim()
+        Write-Host "[install] (re)installing ccusage@$ccusageVersion globally via npm..."
+        Invoke-Native 'npm install -g ccusage' { & $npm install -g "ccusage@$ccusageVersion" --no-fund --no-audit }
+    } else {
+        Write-Host "[install] CCUSAGE_VERSION not found, installing latest ccusage..."
+        Invoke-Native 'npm install -g ccusage' { & $npm install -g ccusage --no-fund --no-audit }
+    }
 }
 
 # 3. Shim files.
@@ -150,13 +166,16 @@ base = os.path.join(os.environ["LOCALAPPDATA"], "token-usage")
 log = os.path.join(base, "ship.log")
 if os.path.exists(log) and os.path.getsize(log) > 1_048_576:
     os.replace(log, log + ".1")
+# Set by install.ps1 when it was given -CcusagePath; empty means use PATH.
+ccusage = r"__CCUSAGE_PATH__"
+env = dict(os.environ, TOKEN_USAGE_CCUSAGE=ccusage) if ccusage else None
 with open(log, "ab") as fh:
     subprocess.run(
         [os.path.join(base, ".venv", "Scripts", "pythonw.exe"),
          os.path.join(base, "ccusage-ship.py")],
-        stdout=fh, stderr=fh, check=False,
+        stdout=fh, stderr=fh, check=False, env=env,
     )
-'@ | Set-Content -Path $wrapper -Encoding UTF8
+'@.Replace('__CCUSAGE_PATH__', $CcusagePath) | Set-Content -Path $wrapper -Encoding UTF8
 
 # A stale run-ship.cmd from an older install would still work, but the task no
 # longer points at it; drop it so there is one obvious entry point.
@@ -168,10 +187,13 @@ if (Test-Path $staleCmd) { Remove-Item -Force $staleCmd }
 # command simply doesn't exist on Windows. Uses python.exe (not pythonw) so an
 # interactive run prints to the console the user typed it in.
 $cliCmd = Join-Path $installDir 'token-usage.cmd'
+$ccusageLine = if ($CcusagePath) { "set `"TOKEN_USAGE_CCUSAGE=$CcusagePath`"" } else { 'rem ccusage: first on PATH' }
 @"
 @echo off
 rem token-usage CLI entry point. Interactive counterpart to the hourly
 rem Scheduled Task, which runs run-ship.pyw via pythonw instead.
+setlocal
+$ccusageLine
 "$venvPython" "$(Join-Path $installDir 'ccusage-ship.py')" %*
 exit /b %ERRORLEVEL%
 "@ | Set-Content -Path $cliCmd -Encoding ASCII

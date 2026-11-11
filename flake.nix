@@ -39,6 +39,10 @@
             runHook preInstall
             mkdir -p $out/bin $out/share/token-usage
             cp shim/ccusage-ship.py $out/bin/ccusage-ship
+            # `token-usage --version` names the commit this was built from; the
+            # release tarball stamps the tag the same way.
+            sed -i 's/^__version__ = "dev"$/__version__ = "${self.shortRev or self.dirtyShortRev or "dev"}"/' \
+              $out/bin/ccusage-ship
             sed -i '1i#!/usr/bin/env python3' $out/bin/ccusage-ship
             chmod 0755 $out/bin/ccusage-ship
             cp CCUSAGE_VERSION $out/share/token-usage/CCUSAGE_VERSION

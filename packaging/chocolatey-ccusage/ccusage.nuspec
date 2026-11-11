@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>ccusage</id>
+    <version>__CCUSAGE_VERSION__</version>
+    <packageSourceUrl>https://github.com/FactusConsulting/token-usage/tree/main/packaging/chocolatey-ccusage</packageSourceUrl>
+    <owners>FactusConsulting</owners>
+    <title>ccusage</title>
+    <authors>ryoppippi and the ccusage contributors</authors>
+    <projectUrl>https://github.com/ccusage/ccusage</projectUrl>
+    <licenseUrl>https://github.com/ccusage/ccusage/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/ccusage/ccusage</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/ccusage/ccusage/issues</bugTrackerUrl>
+    <tags>ccusage claude codex llm usage cli</tags>
+    <summary>Usage and cost analysis for AI coding CLIs (Claude Code, Codex, ...)</summary>
+    <description>
+The upstream ccusage binary, unmodified: the static Windows executable ccusage
+publishes on npm as @ccusage/ccusage-win32-x64 / -win32-arm64. The install
+script downloads it from the npm registry and verifies its sha512 against the
+pin in FactusConsulting/token-usage (ccusage.lock.json). No Node.js needed.
+
+Published to the token-usage Chocolatey feed for each ccusage release; the
+token-usage package depends on the exact version.
+    </description>
+    <releaseNotes>https://github.com/ccusage/ccusage/releases/tag/v__CCUSAGE_VERSION__</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

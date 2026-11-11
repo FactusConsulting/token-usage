@@ -17,8 +17,9 @@
     <summary>Ship ccusage daily aggregates to a self-hosted Langfuse instance</summary>
     <description>
 Cross-machine LLM token-usage tracking. Installs the token-usage shim plus a
-Scheduled Task that runs ccusage hourly and ships daily aggregates to a
-self-hosted Langfuse instance.
+Scheduled Task that runs ccusage hourly and ships its usage aggregates to a
+self-hosted Langfuse instance. Depends on the ccusage package from the same
+feed, at the exact version this release was built and tested with.
 
 Install from the public Chocolatey feed hosted on this repo's GitHub Pages
 (see the README for the `choco source add` command).
@@ -28,7 +29,11 @@ After install, edit `%LOCALAPPDATA%\token-usage\.env` and fill in the
     </description>
     <releaseNotes>https://github.com/FactusConsulting/token-usage/releases/tag/v__VERSION__</releaseNotes>
     <dependencies>
-      <dependency id="nodejs-lts" version="20.0.0" />
+      <!-- Exact version: every ccusage release produces a token-usage release,
+           so the exact pin is always the latest ccusage, and it makes
+           `choco upgrade token-usage` move ccusage along. A minimum version
+           alone would leave an older installed ccusage in place. -->
+      <dependency id="ccusage" version="[__CCUSAGE_VERSION__]" />
       <dependency id="python" version="3.10.0" />
     </dependencies>
   </metadata>
