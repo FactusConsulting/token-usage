@@ -2,6 +2,8 @@ name: release
 
 # Cut a release by pushing a version tag:
 #   git tag v1.4.0 && git push origin v1.4.0
+# ccusage bumps (CCUSAGE_VERSION) are released automatically: auto-release.yml
+# tags the next patch version and calls this workflow.
 #
 # Jobs:
 #   build-tarball     — pack source, sha256, attach to GitHub Release
@@ -21,6 +23,15 @@ on:
       tag:
         description: 'Existing tag to (re)release, e.g. v1.4.0'
         required: true
+  # Called by auto-release.yml after it tags a ccusage bump. A tag pushed with
+  # GITHUB_TOKEN does not trigger the `push: tags` event above, so the caller
+  # invokes this workflow directly instead.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. v1.4.0'
+        required: true
+        type: string
 
 jobs:
   build-tarball:
@@ -28,6 +39,7 @@ jobs:
     permissions:
       contents: write
     outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       sha256: ${{ steps.pack.outputs.sha256 }}
       asset_zip: ${{ steps.pack.outputs.asset_zip }}
@@ -52,12 +64,18 @@ jobs:
 
       - name: Resolve tag
         id: resolve
+        # `inputs` is set for both workflow_dispatch and workflow_call; on a tag
+        # push it is empty and the pushed ref is the tag. Do not branch on
+        # github.event_name: under workflow_call it is the caller's event.
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::'$TAG' is not a release tag (v*)"; exit 1 ;;
+          esac
           VERSION="${TAG#v}"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -149,7 +167,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.build-tarball.outputs.tag }}
           # Sleet's git operations need full history on the gh-pages branch
           # (it does a separate `git clone --branch gh-pages` itself).
           fetch-depth: 1
@@ -199,7 +217,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.build-tarball.outputs.tag }}
 
       - name: Install gh CLI
         # The ARC runner image ships without the GitHub CLI.
