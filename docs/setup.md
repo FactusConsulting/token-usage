@@ -8,7 +8,8 @@ a `.env` and start the timer.
 ## Install
 
 All channels pin the same upstream ccusage via `CCUSAGE_VERSION` at the repo
-root (Renovate bumps it; merging the bump cuts the next release).
+root. A new ccusage on npm is pinned and released automatically within about an
+hour (see `docs/design.md`).
 
 ### Chocolatey (Windows)
 

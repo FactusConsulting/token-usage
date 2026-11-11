@@ -184,10 +184,21 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 @functools.lru_cache(maxsize=1)
 def _ccusage_exe() -> str:
-    """Resolve the ccusage executable. On Windows `npm -g` installs
-    `ccusage.cmd`, which subprocess can't launch by the bare name `ccusage`
-    (CreateProcess does no PATHEXT search), so resolve the full path via
-    shutil.which. Raises a clear error if ccusage isn't on PATH at all."""
+    """Resolve the ccusage executable.
+
+    TOKEN_USAGE_CCUSAGE, when set, names the exact binary to run. Packages
+    that bundle the pinned ccusage set it, so a different ccusage earlier on
+    the user's PATH cannot replace the pinned one. Without it, fall back to
+    PATH. On Windows `npm -g` installs `ccusage.cmd`, which subprocess can't
+    launch by the bare name `ccusage` (CreateProcess does no PATHEXT
+    search), so resolve the full path via shutil.which. Raises a clear error
+    if ccusage can't be found."""
+    pinned = os.environ.get("TOKEN_USAGE_CCUSAGE")
+    if pinned:
+        if not (os.path.isfile(pinned) and os.access(pinned, os.X_OK)):
+            raise FileNotFoundError(
+                f"TOKEN_USAGE_CCUSAGE={pinned} is not an executable file")
+        return pinned
     exe = shutil.which("ccusage")
     if not exe:
         raise FileNotFoundError(

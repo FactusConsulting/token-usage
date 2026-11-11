@@ -3,18 +3,5 @@
   "extends": [
     "local>FactusConsulting/renovate-config"
   ],
-  "customManagers": [
-    {
-      "description": "Bump the upstream ccusage npm version pinned in CCUSAGE_VERSION. The same file is read by installers/windows/install.ps1, installers/ubuntu/install.sh, the Chocolatey package, the Homebrew formula and the Nix flake — one PR per upstream release fans out to all five.",
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^CCUSAGE_VERSION$/"
-      ],
-      "matchStrings": [
-        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"
-      ],
-      "depNameTemplate": "ccusage",
-      "datasourceTemplate": "npm"
-    }
-  ]
+  "description": "ccusage is NOT tracked here: .github/workflows/ccusage-update.yml polls npm hourly, pins the binary checksums (which Renovate cannot do) and releases."
 }

@@ -456,3 +456,27 @@ def test_journald_and_terminals_are_not_stamped(monkeypatch):
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+def test_ccusage_exe_prefers_pinned_binary(monkeypatch, tmp_path):
+    exe = tmp_path / "ccusage"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    monkeypatch.setenv("TOKEN_USAGE_CCUSAGE", str(exe))
+    monkeypatch.setattr(ship.shutil, "which", lambda _: "/elsewhere/ccusage")
+    ship._ccusage_exe.cache_clear()
+    try:
+        assert ship._ccusage_exe() == str(exe)
+    finally:
+        ship._ccusage_exe.cache_clear()
+
+
+def test_ccusage_exe_rejects_missing_pinned_binary(monkeypatch, tmp_path):
+    monkeypatch.setenv("TOKEN_USAGE_CCUSAGE", str(tmp_path / "nope"))
+    monkeypatch.setattr(ship.shutil, "which", lambda _: "/elsewhere/ccusage")
+    ship._ccusage_exe.cache_clear()
+    try:
+        with pytest.raises(FileNotFoundError, match="TOKEN_USAGE_CCUSAGE"):
+            ship._ccusage_exe()
+    finally:
+        ship._ccusage_exe.cache_clear()

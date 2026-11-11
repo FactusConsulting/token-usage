@@ -70,8 +70,28 @@ half-empty observation per day per source.
 ## Versioning & releases
 
 `CCUSAGE_VERSION` at the repo root is the single source of truth for the pinned
-upstream ccusage version. Renovate opens a PR when a new ccusage is published.
-Once that PR is merged, `.github/workflows/auto-release.yml` pushes the next patch tag
-and runs `release.yml`, which builds the tarball, publishes the Chocolatey feed,
-and opens the Homebrew formula PR. Other changes are still released by pushing a
-`v*` tag by hand.
+upstream ccusage version. `ccusage.lock.json` next to it records, for each
+platform, the URL and sha512 of the static binary upstream publishes as
+`@ccusage/ccusage-<platform>` on npm. `scripts/ccusage_pin.py` writes both, and a
+test fails if they disagree.
+
+`.github/workflows/ccusage-update.yml` checks npm every hour. When ccusage has a
+new version, it pins it, verifies every binary, runs the tests and the Nix build,
+commits the pin to `main`, tags the next patch version and runs `release.yml`.
+That builds the tarball, writes release notes with the upstream ccusage highlights,
+publishes the Chocolatey feed and opens the Homebrew formula PR. Every ccusage
+release therefore becomes a token-usage release within about an hour.
+
+How each channel gets ccusage:
+
+| Channel | ccusage |
+| :--- | :--- |
+| Nix flake | `packages.ccusage`: the pinned binary, fetched with its sha512 |
+| Homebrew | `npm install` of `ccusage@<pin>` into the formula's private prefix |
+| Chocolatey | `npm install -g ccusage@<pin>` by `installers/windows/install.ps1` |
+
+The Nix wrapper sets `TOKEN_USAGE_CCUSAGE` to the binary's absolute path, so the
+shim runs exactly the pinned ccusage even if another one is on PATH. Without the
+variable, the shim falls back to the first `ccusage` on PATH.
+
+Other changes are still released by pushing a `v*` tag by hand.
