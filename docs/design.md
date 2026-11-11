@@ -88,10 +88,13 @@ How each channel gets ccusage:
 | :--- | :--- |
 | Nix flake | `packages.ccusage`: the pinned binary, fetched with its sha512 |
 | Homebrew | `npm install` of `ccusage@<pin>` into the formula's private prefix |
-| Chocolatey | `npm install -g ccusage@<pin>` by `installers/windows/install.ps1` |
+| Chocolatey | the `ccusage` package on the same feed (pinned binary, sha512-checked), an exact-version dependency of `token-usage` |
+| From a clone | `npm install -g ccusage@<pin>` by the installer scripts |
 
-The Nix wrapper sets `TOKEN_USAGE_CCUSAGE` to the binary's absolute path, so the
-shim runs exactly the pinned ccusage even if another one is on PATH. Without the
+The Nix wrapper and the Chocolatey entry points (`token-usage.cmd`, the
+Scheduled Task's `run-ship.pyw`) set `TOKEN_USAGE_CCUSAGE` to the binary's
+absolute path, so the shim runs exactly the pinned ccusage even if another one
+is on PATH. Without the
 variable, the shim falls back to the first `ccusage` on PATH.
 
 Other changes are still released by pushing a `v*` tag by hand.

@@ -199,38 +199,28 @@ jobs:
         with:
           name: shas
 
-      - name: Substitute placeholders + pack
+      - name: Render + pack ccusage and token-usage
         id: pack
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $version = '${{ needs.build-tarball.outputs.version }}'
+          $tag     = '${{ needs.build-tarball.outputs.tag }}'
           $shaZip  = (Get-Content -Raw zip.sha256).Trim()
-          Write-Host "Substituting __VERSION__=$version __CHECKSUM__=$shaZip"
-
-          $pkgRoot = 'packaging/chocolatey'
-          $nuspec  = Join-Path $pkgRoot 'token-usage.nuspec'
-          $install = Join-Path $pkgRoot 'tools/chocolateyinstall.ps1'
-          $verify  = Join-Path $pkgRoot 'tools/VERIFICATION.txt'
-
-          foreach ($f in @($nuspec, $install, $verify)) {
-            (Get-Content -Raw $f) `
-              -replace '__VERSION__', $version `
-              -replace '__CHECKSUM__', $shaZip `
-              | Set-Content -NoNewline $f
-          }
-
-          choco pack $nuspec --out $pkgRoot
-          $nupkg = Get-ChildItem -Path $pkgRoot -Filter "token-usage.$version.nupkg" | Select-Object -First 1
-          if (-not $nupkg) { throw "choco pack produced no .nupkg" }
-          "package=$($nupkg.FullName)" >> $env:GITHUB_OUTPUT
+          $url     = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/token-usage-$version.zip"
+          $pkgs = ./scripts/render-chocolatey.ps1 -Version $version -ZipUrl $url `
+                    -ZipChecksum $shaZip -OutDir out
+          "packages=$($pkgs -join ',')" >> $env:GITHUB_OUTPUT
 
       - name: Publish to public Chocolatey feed (Sleet → gh-pages)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ./scripts/publish-chocolatey-feed.ps1 -PackagePath "${{ steps.pack.outputs.package }}"
+          # ccusage first: the feed must hold the dependency token-usage pins.
+          ./scripts/publish-chocolatey-feed.ps1 `
+            -PackagePath ('${{ steps.pack.outputs.packages }}' -split ',') `
+            -KeepExisting ccusage
 
   publish-homebrew:
     needs: build-tarball

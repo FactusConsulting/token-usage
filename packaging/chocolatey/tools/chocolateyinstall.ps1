@@ -1,9 +1,10 @@
 <#
 Chocolatey install script for token-usage.
 
-The release workflow substitutes:
+scripts/render-chocolatey.ps1 substitutes:
   __VERSION__   - semver of the tag, e.g. 1.4.0
-  __CHECKSUM__  - sha256 of the GitHub release source tarball
+  __URL__       - the release zip (CI tests use a local file instead)
+  __CHECKSUM__  - sha256 of that zip
 
 Public download: this package targets a PUBLIC GitHub release. The zip is
 fetched anonymously from the release assets - no token or auth header needed.
@@ -13,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $packageName = 'token-usage'
 $version     = '__VERSION__'
 $checksum    = '__CHECKSUM__'
-$tarUrl      = "https://github.com/FactusConsulting/token-usage/releases/download/v$version/token-usage-$version.zip"
+$tarUrl      = '__URL__'
 
 $toolsDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $extractDir  = Join-Path $toolsDir 'src'
@@ -41,8 +42,16 @@ if (-not (Test-Path -LiteralPath $installer)) {
     throw "Could not find installers\windows\install.ps1 under $extractDir"
 }
 
-Write-Host "[choco] running $installer with RepoRoot=$repoRoot"
-& powershell.exe -ExecutionPolicy Bypass -File $installer -RepoRoot $repoRoot
+# The ccusage dependency installed the pinned ccusage.exe into its own package
+# dir. Pass its exact path, so the shim never runs another ccusage that happens
+# to be earlier on PATH (such as an `npm -g` install left by an older release).
+$ccusage = Join-Path $env:ChocolateyInstall 'lib\ccusage\tools\ccusage.exe'
+if (-not (Test-Path -LiteralPath $ccusage)) {
+    throw "ccusage dependency missing: $ccusage not found"
+}
+
+Write-Host "[choco] running $installer with RepoRoot=$repoRoot CcusagePath=$ccusage"
+& powershell.exe -ExecutionPolicy Bypass -File $installer -RepoRoot $repoRoot -CcusagePath $ccusage
 if ($LASTEXITCODE -ne 0) {
     throw "install.ps1 exited $LASTEXITCODE"
 }

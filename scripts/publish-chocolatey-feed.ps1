@@ -1,6 +1,12 @@
+# Publishes one or more .nupkg files to the Sleet feed on gh-pages in a single
+# commit. Packages whose id is in -KeepExisting are skipped when that version is
+# already on the feed: the release passes ccusage here, whose package for a
+# given version never changes, so re-pushing it would only churn gh-pages.
 param(
     [Parameter(Mandatory=$true)]
-    [string]$PackagePath,
+    [string[]]$PackagePath,
+
+    [string[]]$KeepExisting = @(),
 
     [string]$Repository = $env:GITHUB_REPOSITORY,
     [string]$Token = $(if ($env:GH_TOKEN) { $env:GH_TOKEN } else { $env:GITHUB_TOKEN }),
@@ -30,9 +36,10 @@ if (-not $Repository) {
     throw "Repository is required. Set GITHUB_REPOSITORY or pass -Repository owner/name."
 }
 
-$package = Get-Item $PackagePath
-if (-not $package) {
-    throw "Chocolatey package not found: $PackagePath"
+$packages = foreach ($p in $PackagePath) {
+    $item = Get-Item $p
+    if (-not $item) { throw "Chocolatey package not found: $p" }
+    $item
 }
 
 $repoParts = $Repository.Split("/")
@@ -101,8 +108,21 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "sleet init failed" }
     }
 
-    & $sleet push --config $configPath --source githubPages --force $package.FullName
-    if ($LASTEXITCODE -ne 0) { throw "sleet push failed" }
+    foreach ($package in $packages) {
+        # <id>.<version>.nupkg; ids here contain no dots, versions start with a digit.
+        if ($package.BaseName -notmatch '^(?<id>[^.]+)\.(?<ver>\d.*)$') {
+            throw "cannot read id and version from $($package.Name)"
+        }
+        $id = $Matches.id.ToLowerInvariant()
+        $ver = $Matches.ver.ToLowerInvariant()
+        $existing = Join-Path $feedDir "flatcontainer/$id/$ver"
+        if ($KeepExisting -contains $id -and (Test-Path $existing)) {
+            Write-Host "$id $ver is already on the feed; keeping it"
+            continue
+        }
+        & $sleet push --config $configPath --source githubPages --force $package.FullName
+        if ($LASTEXITCODE -ne 0) { throw "sleet push $($package.Name) failed" }
+    }
 
     & $sleet validate --config $configPath --source githubPages
     if ($LASTEXITCODE -ne 0) { throw "sleet validate failed" }
@@ -117,7 +137,7 @@ try {
         exit 0
     }
 
-    git -C $feedRoot commit -m "chore: publish chocolatey package $($package.BaseName)"
+    git -C $feedRoot commit -m "chore: publish chocolatey packages $(($packages | ForEach-Object BaseName) -join ', ')"
     if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
     git -C $feedRoot push origin "HEAD:$FeedBranch"
     if ($LASTEXITCODE -ne 0) { throw "git push $FeedBranch failed" }

@@ -16,9 +16,15 @@ hour (see `docs/design.md`).
 ```powershell
 choco source add --name=token-usage `
   --source="https://factusconsulting.github.io/token-usage/chocolatey/index.json"
-# omit -s so Chocolatey resolves the nodejs/python deps from the community feed
+# omit -s: ccusage comes from this feed, python from the community feed
 choco install token-usage -y
 ```
+
+`token-usage` depends on the `ccusage` package from the same feed at the exact
+version the release pins, which is always the latest ccusage: every ccusage
+release produces a token-usage release. That package installs ccusage's
+static Windows binary (no Node.js) and puts `ccusage` on PATH;
+`choco upgrade token-usage` moves it along.
 
 The Chocolatey package runs `installers/windows/install.ps1`, which also
 registers a **Scheduled Task** (`TokenUsageCcusageShip`, hourly) and writes a
@@ -60,7 +66,7 @@ Its inputs are pinned in the committed `flake.lock`; refresh them with
 ### From a clone (no package manager)
 
 `installers/windows/install.ps1` and `installers/ubuntu/install.sh` do the full
-setup (Node + ccusage + shim + `token-usage` command + scheduled task / systemd
+setup (ccusage via Node/npm + shim + `token-usage` command + scheduled task / systemd
 timer) from a checkout. The package managers are preferred; this is the fallback.
 
 All four channels put a `token-usage` command on PATH: `%LOCALAPPDATA%\token-usage\token-usage.cmd`

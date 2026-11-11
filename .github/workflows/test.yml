@@ -47,6 +47,47 @@ jobs:
       - name: Run
         run: nix run . -- --version
 
+  chocolatey:
+    name: chocolatey packages (install on Windows)
+    # Installs what a release publishes (scripts/render-chocolatey.ps1 is the
+    # same code path), from a local feed, on a real Windows host: the ccusage
+    # dependency, then token-usage through installers/windows/install.ps1.
+    # This is the only automated test of the Windows installer.
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pack from this commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'token-usage-0.0.0.zip'
+          git archive --format=zip --prefix=token-usage-0.0.0/ -o $zip HEAD
+          $sha = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          ./scripts/render-chocolatey.ps1 -Version 0.0.0 -ZipUrl ([uri]$zip).AbsoluteUri `
+            -ZipChecksum $sha -OutDir "$env:RUNNER_TEMP\feed"
+      - name: Install token-usage (pulls ccusage from the local feed)
+        shell: pwsh
+        run: |
+          # The community feed supplies the python dependency.
+          choco install token-usage -y --no-progress `
+            --source "'$env:RUNNER_TEMP\feed;https://community.chocolatey.org/api/v2/'"
+          if ($LASTEXITCODE -ne 0) { throw "choco install exited $LASTEXITCODE" }
+      - name: token-usage runs the pinned ccusage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content -Raw CCUSAGE_VERSION).Trim()
+          $exe = Join-Path $env:ChocolateyInstall 'lib\ccusage\tools\ccusage.exe'
+          $out = & (Join-Path $env:LOCALAPPDATA 'token-usage\token-usage.cmd') --version
+          $out | Out-Host
+          if (-not ($out -contains "ccusage $pin ($exe)")) {
+            throw "token-usage does not run the pinned ccusage $pin at $exe"
+          }
+          # The shim Chocolatey creates puts the same binary on PATH.
+          $onPath = (& (Join-Path $env:ChocolateyInstall 'bin\ccusage.exe') --version)
+          if ($onPath -notmatch [regex]::Escape($pin)) { throw "ccusage on PATH reports $onPath" }
+          Get-ScheduledTask -TaskName TokenUsageCcusageShip | Out-Host
+
   chart:
     name: langfuse-stack chart (lint + guards)
     runs-on: arc-runner-public
