@@ -1,29 +1,29 @@
 {
-  "version": "20.0.50",
+  "version": "20.0.51",
   "platforms": {
     "darwin-arm64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-darwin-arm64/-/ccusage-darwin-arm64-20.0.50.tgz",
-      "integrity": "sha512-GCb5wVtKlAYQKGwu3Eipzlmw3oMdh7oTdOEni2/z1LP1b7P6Pa5TGPIyhcGOR4345Ihfw8+0iO2Qtga2AlJMMw=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-darwin-arm64/-/ccusage-darwin-arm64-20.0.51.tgz",
+      "integrity": "sha512-Z8dPlNxgZy8QhYZuMZT81Pf861RmuBAGuhLeoZqXL1vlle67Zp21fpHvvP3pnYXHqdmyEKBE57peqzIGjnN9nA=="
     },
     "darwin-x64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-darwin-x64/-/ccusage-darwin-x64-20.0.50.tgz",
-      "integrity": "sha512-zONySDodBay46hE9WefsYFZG6BSQQqN/T4m6mMZrTbCdG/6srTP+B3+Ap+ORAynuCtFBzodpA/hYxQq/EelwKw=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-darwin-x64/-/ccusage-darwin-x64-20.0.51.tgz",
+      "integrity": "sha512-jP8PWxQN9ZSd55OlYpvyuZ7Xu7B9nuzWYq6cLdSyM5hCkiDw7+nMfrvk1tNDG2rKwja2WMjumQ/XqC5MaeeSyg=="
     },
     "linux-arm64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-linux-arm64/-/ccusage-linux-arm64-20.0.50.tgz",
-      "integrity": "sha512-3GYTeZrUSFTN03LBqH0m6IUb1MDKNRhzZady0CHb322Q1A1ee5CQv9a4psbrP14w0do5lSdbZ22sTkelb2Ge+g=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-linux-arm64/-/ccusage-linux-arm64-20.0.51.tgz",
+      "integrity": "sha512-yn//C7Qq9Q3VaFkjC8Ztek8dSOrmK5QRKUjoLr2VpAIgqKG5JiFNJ71cLQZdKPTA/n59LetlvL7sVWhSUeqqmw=="
     },
     "linux-x64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-linux-x64/-/ccusage-linux-x64-20.0.50.tgz",
-      "integrity": "sha512-m+V8+9SiH/HI/kDLFLb9PXd6IWL+/qwbtGex9UJ3McZcQfdLtsVTRZ+/3UI+QJPoEBVypD3uAx9m6wbHQrbh7w=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-linux-x64/-/ccusage-linux-x64-20.0.51.tgz",
+      "integrity": "sha512-NZN5h+HBHC6tOO3aadbsZEKzGfNS24asTcvgv+iP9gY0Cw1QyzSaOhqJM1E2f8nkCsqiX2NRrb/RNC7dvcXx7g=="
     },
     "win32-arm64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-win32-arm64/-/ccusage-win32-arm64-20.0.50.tgz",
-      "integrity": "sha512-MMOZlxWfZPg+kaNW0oHjjBGESRhGZamOWG13hAbkSYjwH70jPjdXu+3g54xi7eR51X+aYt3K1/clP5BRulek6Q=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-win32-arm64/-/ccusage-win32-arm64-20.0.51.tgz",
+      "integrity": "sha512-Si4Kkk62tBh4QY0SNR0mkC/Lu6Vm+36VFGKHsInJ1O9lYuAkDHq2gmi09XttgHrt3IanV6xFaCi2p8nXwx8wLg=="
     },
     "win32-x64": {
-      "url": "https://registry.npmjs.org/@ccusage/ccusage-win32-x64/-/ccusage-win32-x64-20.0.50.tgz",
-      "integrity": "sha512-LNncBPmc5+DNlQZDIv3R/YrRnKpHqU10wGZXCdz2JP/FNRcRoJB0zADVwxXtlLWZqAr4v4SfdEsSEsuDILz4dw=="
+      "url": "https://registry.npmjs.org/@ccusage/ccusage-win32-x64/-/ccusage-win32-x64-20.0.51.tgz",
+      "integrity": "sha512-0YLB2fXlPc/ZGxzxU6mE/aSHtTdJ3bChaAuUfJ78pPnypKU9LgNOSzKtePJz/d8hfevS78O88oFiOJEWqTyTVw=="
     }
   }
 }
