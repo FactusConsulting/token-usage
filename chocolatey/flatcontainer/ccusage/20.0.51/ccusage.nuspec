@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>ccusage</id>
+    <version>20.0.51</version>
+    <title>ccusage</title>
+    <authors>ryoppippi and the ccusage contributors</authors>
+    <owners>FactusConsulting</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/ccusage/ccusage/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/ccusage/ccusage</projectUrl>
+    <description>The upstream ccusage binary, unmodified: the static Windows executable ccusage
+publishes on npm as @ccusage/ccusage-win32-x64 / -win32-arm64. The install
+script downloads it from the npm registry and verifies its sha512 against the
+pin in FactusConsulting/token-usage (ccusage.lock.json). No Node.js needed.
+
+Published to the token-usage Chocolatey feed for each ccusage release; the
+token-usage package depends on the exact version.</description>
+    <summary>Usage and cost analysis for AI coding CLIs (Claude Code, Codex, ...)</summary>
+    <releaseNotes>https://github.com/ccusage/ccusage/releases/tag/v20.0.51</releaseNotes>
+    <tags>ccusage claude codex llm usage cli</tags>
+    <projectSourceUrl>https://github.com/ccusage/ccusage</projectSourceUrl>
+    <packageSourceUrl>https://github.com/FactusConsulting/token-usage/tree/main/packaging/chocolatey-ccusage</packageSourceUrl>
+    <bugTrackerUrl>https://github.com/ccusage/ccusage/issues</bugTrackerUrl>
+  </metadata>
+</package>
