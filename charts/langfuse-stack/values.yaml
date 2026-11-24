@@ -94,6 +94,23 @@ clickhouseCluster:
         memory: 2Gi
       limits:
         memory: 4Gi
+    # Extra ClickHouse server configuration, passed straight to the operator's
+    # spec.settings.extraConfig and merged into its generated config (YAML form
+    # of config.xml). Changing it restarts the server pod.
+    #
+    # The main use: the operator enables query_log, part_log, text_log,
+    # metric_log and asynchronous_metric_log with no TTL and logs at `trace`,
+    # so on a quiet install the system database outgrows the Langfuse data by
+    # orders of magnitude (15 GiB vs 40 MiB here). For example:
+    #   extraConfig:
+    #     logger:
+    #       level: information
+    #     text_log:
+    #       ttl: event_date + INTERVAL 7 DAY DELETE
+    # A changed system-log table definition makes ClickHouse rename the old
+    # table to <name>_0 and create a new one; drop the _N tables afterwards to
+    # reclaim the space.
+    extraConfig: {}
 
 # ---------------------------------------------------------------------------
 # Pre-upgrade guard: refuse to upgrade unless a recent CNPG backup completed.
