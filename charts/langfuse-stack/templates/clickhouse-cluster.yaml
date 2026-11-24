@@ -78,4 +78,8 @@ spec:
       secret:
         name: {{ $cc.authSecret.name }}
         key: {{ $cc.authSecret.key }}
+    {{- with $cc.server.extraConfig }}
+    extraConfig:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
 {{- end }}
